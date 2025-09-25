@@ -1,0 +1,42 @@
+{
+  "edit_mode_hotkey": "F10",
+  "initial_layers": [
+    { "id": "standings", "title": "Standings", "visible": true },
+    { "id": "fuel", "title": "Fuel Calc", "visible": true },
+    { "id": "car_lr", "title": "Car Left/Right", "visible": true },
+    { "id": "map", "title": "Track Map", "visible": true },
+    { "id": "chat", "title": "Twitch Chat", "visible": true }
+  ]
+}
+
+{
+  "edit_mode_hotkey": "F10",
+  "initial_layers": [
+    {
+      "id": "standings",
+      "title": "Standings",
+      "visible": true
+    },
+    {
+      "id": "fuel",
+      "title": "Fuel Calc",
+      "visible": true
+    },
+    {
+      "id": "car_lr",
+      "title": "Car Left/Right",
+      "visible": true
+    },
+    {
+      "id": "map",
+      "title": "Track Map",
+      "visible": true
+    },
+    {
+      "id": "twitchchat",
+      "title": "Twitch Chat",
+      "visible": true
+    }
+  ],
+  "twitch_channel": "acebedo247"
+}
