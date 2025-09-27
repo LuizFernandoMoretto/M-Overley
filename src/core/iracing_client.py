@@ -227,9 +227,26 @@ class IRacingClient(QtCore.QObject):
     def _get_car_lr(self):
         """Retorna carros próximos para o layer CarLR"""
         try:
+            if 'CarLeftRight' not in self.ir.var_headers:
+                print("[IRacingClient] CarLeftRight não disponível no SDK → usando teste.")
+                return {
+                    "cars": [
+                        {"side": "left", "gap_m": 10},
+                        {"side": "right", "gap_m": 25},
+                    ]
+                }
+
             val = self.ir['CarLeftRight']
+            print(f"[IRacingClient] Valor cru CarLeftRight={val}")
+
             if val is None:
-                return {"cars": []}
+                # 🔹 Simulação quando game está fechado
+                return {
+                    "cars": [
+                        {"side": "left", "gap_m": 15},
+                        {"side": "right", "gap_m": 30},
+                    ]
+                }
 
             cars = []
             # 0 = clear, 1 = left, 2 = right, 3 = both

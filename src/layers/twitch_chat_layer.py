@@ -32,7 +32,7 @@ class TwitchChatLayer(BaseLayer):
 
         cfg = load_config()
         channel = cfg.get("twitch_channel", "twitch")  # valor padrão
-        url = f"https://www.twitch.tv/embed/{channel}/chat?parent=localhost"
+        url = f"https://www.twitch.tv/embed/{channel}/chat?parent=localhost&darkpopout"
 
         self.view.setUrl(url)
         self.show()

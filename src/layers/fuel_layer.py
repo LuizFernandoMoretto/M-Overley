@@ -1,7 +1,6 @@
 from layers.base_layer import BaseLayer
 from core.config_store import ConfigStore
 from PySide6 import QtCore, QtWidgets, QtGui
-import copy
 
 
 class FuelLayer(BaseLayer):
@@ -10,108 +9,114 @@ class FuelLayer(BaseLayer):
     def __init__(self, app, layer_id="fuel", title="Fuel Calc", initial_rect=None):
         super().__init__(app, layer_id, title, initial_rect)
 
-        # Gerenciador de configs
+        layout = QtWidgets.QVBoxLayout(self)
+
+        # Configuração persistente
         self.cfg_store = ConfigStore()
-        self.cfg = self.cfg_store.load_layer_config(layer_id)
+        saved_cfg = self.cfg_store.load_layer_config(layer_id)
 
-        # Alpha padrão
-        self.alpha = self.cfg.get("alpha", 220)
-        self.zebra = self.cfg.get("zebra", True)
+        # Transparência configurável
+        self.alpha = saved_cfg.get("alpha", 220)
 
-        # tabela
+        # Tabela 2 colunas (Item | Valor)
+        labels = ["Fuel atual", "Capacidade", "Consumo/volta", "Voltas restantes"]
+
         self.table = QtWidgets.QTableWidget(self)
         self.table.setColumnCount(2)
-        self.table.setRowCount(4)
+        self.table.setRowCount(len(labels))
         self.table.setHorizontalHeaderLabels(["Item", "Valor"])
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
 
-        self._apply_styles()
+        # Remove barras de rolagem
+        self.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
-        labels = ["Fuel atual", "Capacidade", "Consumo/volta", "Voltas restantes"]
+        # Estilo preto/cinza translúcido
+        self.table.setStyleSheet(f"""
+            QTableWidget {{
+                background-color: transparent;
+                color: white;
+                font-size: 12px;
+                border: 2px solid #444;
+                gridline-color: #555;
+            }}
+            QHeaderView::section {{
+                background-color: rgba(20,20,20,{self.alpha});
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 3px;
+            }}
+        """)
+
+        # Preenche coluna de itens
         for i, lbl in enumerate(labels):
             item = QtWidgets.QTableWidgetItem(lbl)
-            item.setForeground(QtGui.QBrush(QtGui.QColor("#00ff88")))
+            item.setForeground(QtGui.QBrush(QtGui.QColor("white")))
             font = item.font()
             font.setBold(True)
             item.setFont(font)
             self.table.setItem(i, 0, item)
             self.table.setItem(i, 1, QtWidgets.QTableWidgetItem("--"))
 
-        # conecta o sinal ao método de update
-        self.fuel_updated.connect(self._update_table)
+        layout.addWidget(self.table)
+        self.setLayout(layout)
 
-        # registra listener no iRacing
+        # conecta sinal
+        self.fuel_updated.connect(self._update_ui)
+
+        # registra listener
         if hasattr(self.app, "iracing_client"):
-            print(">>> DEBUG Registrando listener do fuel no iracing_client")
             self.app.iracing_client.add_listener(self.update_from_iracing)
 
         self.show()
 
-    def _apply_styles(self):
-        """Aplica transparência e zebra striping"""
-        self.table.setStyleSheet(f"""
-            QTableWidget {{
-                background-color: rgba(0, 0, 0, {self.alpha});
-                color: white;
-                font-size: 14px;
-                border: 2px solid #444;
-                gridline-color: #555;
-            }}
-            QHeaderView::section {{
-                background-color: rgba(20, 20, 20, {self.alpha});
-                color: white;
-                font-weight: bold;
-                border: none;
-                padding: 4px;
-            }}
-        """)
-
-        # Aplica zebra
-        if self.zebra:
-            for row in range(self.table.rowCount()):
-                bg = QtGui.QColor(0, 0, 0, self.alpha) if row % 2 == 0 else QtGui.QColor(30, 30, 30, self.alpha)
-                for col in range(self.table.columnCount()):
-                    item = self.table.item(row, col)
-                    if item:
-                        item.setBackground(QtGui.QBrush(bg))
-
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        if hasattr(self, "table"):
-            self.table.setGeometry(self.rect().adjusted(5, 25, -5, -5))
+    def set_edit_mode(self, editing: bool):
+        header = self.table.horizontalHeader()
+        if editing:
+            header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
+        else:
+            header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        super().set_edit_mode(editing)
 
     def update_from_iracing(self, packet):
         if not isinstance(packet, dict):
             return
-
         fuel = packet.get("fuel")
         if not fuel:
             return
+        QtCore.QTimer.singleShot(0, lambda: self.fuel_updated.emit(fuel))
 
-        safe_data = copy.deepcopy(fuel)
-        QtCore.QTimer.singleShot(0, lambda: self.fuel_updated.emit(safe_data))
-
-    def _update_table(self, fuel):
+    def _update_ui(self, fuel):
         values = [
-            f"{fuel.get('level', 0):.1f} L" if fuel.get("level") else "--",
-            f"{fuel.get('capacity', 0):.1f} L" if fuel.get("capacity") else "--",
-            f"{fuel.get('use_per_lap', 0):.2f} L" if fuel.get("use_per_lap") else "--",
-            str(fuel.get("laps", '--'))
+            f"{fuel.get('level', 0):.1f} L",
+            f"{fuel.get('capacity', 0):.1f} L",
+            f"{fuel.get('use_per_lap', 0):.2f} L",
+            str(fuel.get('laps', 0))
         ]
-
         for i, val in enumerate(values):
-            self.table.setItem(i, 1, QtWidgets.QTableWidgetItem(val))
+            item = QtWidgets.QTableWidgetItem(val)
+            item.setTextAlignment(QtCore.Qt.AlignCenter)
 
-        self._apply_styles()
+            # zebra striping translúcido
+            bg_color = QtGui.QColor(0, 0, 0, self.alpha) if i % 2 == 0 else QtGui.QColor(30, 30, 30, self.alpha)
+            item.setBackground(QtGui.QBrush(bg_color))
+            item.setForeground(QtGui.QBrush(QtGui.QColor("white")))
+
+            self.table.setItem(i, 1, item)
 
     def closeEvent(self, event):
-        # Salvar alpha e zebra
+        widths = {}
+        for col in range(self.table.columnCount()):
+            header = self.table.horizontalHeaderItem(col).text()
+            widths[header] = self.table.columnWidth(col)
+
         self.cfg_store.save_layer_config(self.layer_id, {
-            "alpha": self.alpha,
-            "zebra": self.zebra
+            "columns_width": widths,
+            "alpha": self.alpha
         })
         super().closeEvent(event)
         event.accept()

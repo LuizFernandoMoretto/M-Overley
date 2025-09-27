@@ -1,6 +1,7 @@
 import os
 import json
 from PySide6 import QtWidgets, QtGui, QtCore
+from ui.standings_config_dialog import StandingsConfigDialog
 from layers.twitch_chat_layer import save_config, load_config
 
 
@@ -74,9 +75,9 @@ class ControlPanel(QtWidgets.QWidget):
         print(f"[ControlPanel] Layout travado: {checked}")
 
     def toggle_edit_mode(self, checked):
-        """Ativa/desativa modo edição apenas nos layers visíveis"""
+        """Ativa/desativa modo edição em todos os layers"""
         for layer in self.app.layers.values():
-            if layer.isVisible():
+            if hasattr(layer, "set_edit_mode"):
                 layer.set_edit_mode(checked)
         print(f"[ControlPanel] Modo edição: {checked}")
 
@@ -137,10 +138,19 @@ class ControlPanel(QtWidgets.QWidget):
             layout.addWidget(QtWidgets.QLabel("Transparência"))
             layout.addWidget(slider_alpha)
 
+            # Max Players
+            spin_players = QtWidgets.QSpinBox()
+            spin_players.setRange(0, 60)  # 0 = todos
+            spin_players.setValue(cfg.get("max_players", 0))
+            spin_players.setSuffix(" jogadores (0 = todos)")
+            layout.addWidget(QtWidgets.QLabel("Mostrar você + X jogadores"))
+            layout.addWidget(spin_players)
+
             # Botão salvar
             btn_save = QtWidgets.QPushButton("Salvar")
             btn_save.clicked.connect(lambda: self._save_and_close(dialog, layer_id, {
-                "alpha": slider_alpha.value()
+                "alpha": slider_alpha.value(),
+                "max_players": spin_players.value()
             }))
             layout.addWidget(btn_save)
 

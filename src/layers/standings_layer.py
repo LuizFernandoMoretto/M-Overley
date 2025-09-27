@@ -1,6 +1,7 @@
 from layers.base_layer import BaseLayer
 from core.config_store import ConfigStore
 from PySide6 import QtCore, QtWidgets, QtGui
+from ui.standings_config_dialog import StandingsConfigDialog
 import copy
 
 
@@ -28,14 +29,14 @@ class StandingsLayer(BaseLayer):
 
         # Configuração do header
         header = self.table.horizontalHeader()
-        header.setStretchLastSection(False)  # ❌ não estica última coluna
-        header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)  # 🔒 modo fixo
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
 
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.table.setIconSize(QtCore.QSize(24, 12))
 
-        # Estilos
+        # Estilos (incluindo esconder barras de rolagem feiosas)
         self.table.setStyleSheet("""
             QTableWidget {
                 background-color: transparent;
@@ -51,7 +52,15 @@ class StandingsLayer(BaseLayer):
                 border: none;
                 padding: 3px;
             }
+            QScrollBar:vertical, QScrollBar:horizontal {
+                border: none;
+                background: transparent;
+                width: 0px;
+                height: 0px;
+            }
         """)
+        self.table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
         # Larguras padrão
         default_widths = {
@@ -72,6 +81,11 @@ class StandingsLayer(BaseLayer):
             header_text = self.table.horizontalHeaderItem(col).text()
             width = saved_widths.get(header_text, default_widths.get(header_text, 80))
             self.table.setColumnWidth(col, width)
+
+        # Restaurar estado completo do header (ordem e larguras)
+        saved_header = saved_cfg.get("header_state")
+        if saved_header:
+            self.table.horizontalHeader().restoreState(QtCore.QByteArray.fromHex(saved_header.encode()))
 
         # Label inferior com infos da sessão
         self.session_label = QtWidgets.QLabel("Sessão: --", self)
@@ -102,10 +116,9 @@ class StandingsLayer(BaseLayer):
         """Alterna entre edição e fixo"""
         header = self.table.horizontalHeader()
         if editing:
-            header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)  # ✋ usuário pode arrastar
+            header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
         else:
-            header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)  # 🔒 volta a travar
-
+            header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
         super().set_edit_mode(editing)
 
     def update_from_iracing(self, packet):
@@ -122,10 +135,22 @@ class StandingsLayer(BaseLayer):
         standings = packet.get("standings", [])
         session = packet.get("session", {})
 
+        # filtro "eu + X players"
+        saved_cfg = self.cfg_store.load_layer_config(self.layer_id)
+        max_players = saved_cfg.get("max_players")  # defina isso no config.json
+
+        if max_players:
+            my_driver_id = session.get("my_driver_id")
+            my_driver = next((d for d in standings if d.get("id") == my_driver_id), None)
+            if my_driver:
+                idx = standings.index(my_driver)
+                start = max(0, idx - max_players // 2)
+                end = start + max_players
+                standings = standings[start:end]
+
         print(f">>> DEBUG UI recebeu {len(standings)} pilotos")
         self.table.setRowCount(len(standings))
         for i, d in enumerate(standings):
-            # Campos
             pos = QtWidgets.QTableWidgetItem(str(d.get("pos", "--")))
 
             delta_val = d.get("pos_gain", 0)
@@ -158,7 +183,6 @@ class StandingsLayer(BaseLayer):
             gap = QtWidgets.QTableWidgetItem(d.get("gap", "--"))
             inc = QtWidgets.QTableWidgetItem(str(d.get("incidents", "--")))
 
-            # Destaque do líder
             if d.get("pos") == 1:
                 for item in [pos, drv, ir, lap, gap, inc]:
                     item.setForeground(QtGui.QBrush(QtGui.QColor("#FFD700")))
@@ -166,7 +190,6 @@ class StandingsLayer(BaseLayer):
                     font.setBold(True)
                     item.setFont(font)
 
-            # Insere colunas
             self.table.setItem(i, 0, pos)
             self.table.setItem(i, 1, delta)
             self.table.setItem(i, 2, car_num)
@@ -178,7 +201,6 @@ class StandingsLayer(BaseLayer):
             self.table.setItem(i, 8, gap)
             self.table.setItem(i, 9, inc)
 
-            # 🎨 Zebra striping com transparência configurável
             bg_color = QtGui.QColor(0, 0, 0, self.alpha) if i % 2 == 0 else QtGui.QColor(30, 30, 30, self.alpha)
             for col in range(self.table.columnCount()):
                 item = self.table.item(i, col)
@@ -195,12 +217,22 @@ class StandingsLayer(BaseLayer):
 
         class_sof = session.get("class_sof", {})
         if class_sof:
-            parts = []
-            for cid, sof_val in class_sof.items():
-                parts.append(f"Classe {cid}: {sof_val}")
+            parts = [f"Classe {cid}: {sof_val}" for cid, sof_val in class_sof.items()]
             txt += " | " + " | ".join(parts)
 
         self.session_label.setText(txt)
+
+    def open_config_dialog(self):
+        saved_cfg = self.cfg_store.load_layer_config(self.layer_id)
+        current_max = saved_cfg.get("max_players", 0)
+
+        dlg = StandingsConfigDialog(self, current_max)
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
+            new_max = dlg.get_value()
+            # salva no config
+            saved_cfg["max_players"] = new_max
+            self.cfg_store.save_layer_config(self.layer_id, saved_cfg)
+            print(f">>> Standings atualizado: max_players = {new_max}")
 
     def closeEvent(self, event):
         widths = {}
@@ -208,10 +240,12 @@ class StandingsLayer(BaseLayer):
             header = self.table.horizontalHeaderItem(col).text()
             widths[header] = self.table.columnWidth(col)
 
-        # também salva transparência
+        state = self.table.horizontalHeader().saveState().toHex().data().decode()
+
         self.cfg_store.save_layer_config(self.layer_id, {
             "columns_width": widths,
-            "alpha": self.alpha
+            "alpha": self.alpha,
+            "header_state": state
         })
         super().closeEvent(event)
         event.accept()
