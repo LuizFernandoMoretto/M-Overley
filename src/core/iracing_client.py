@@ -19,7 +19,7 @@ class IRacingClient(QtCore.QObject):
     data_ready = QtCore.Signal(dict)
     car_lr_changed = QtCore.Signal(dict)
 
-    def __init__(self, poll_interval=0.3): #Intervalo de atualização
+    def __init__(self, poll_interval=0.1):  # Intervalo de atualização
         super().__init__()
         self.ir = irsdk.IRSDK()
         self.running = False
@@ -46,7 +46,7 @@ class IRacingClient(QtCore.QObject):
                     "standings": self._get_standings(),
                     "session": self._get_session_info(),
                     "fuel": self._get_fuel(),
-                    "car_lr": self._get_car_lr()   # ✅ aqui vai pro UI
+                    "car_lr": self._get_car_lr()
                 }
 
                 try:
@@ -55,13 +55,13 @@ class IRacingClient(QtCore.QObject):
                     self.running = False
                     break
 
-            if packet["car_lr"] != self._last_car_lr:
-                self._last_car_lr = packet["car_lr"]
-                try:
-                    self.car_lr_changed.emit(packet["car_lr"])
-                except RuntimeError:
-                    self.running = False
-                    break
+                if packet["car_lr"] != self._last_car_lr:
+                    self._last_car_lr = packet["car_lr"]
+                    try:
+                        self.car_lr_changed.emit(packet["car_lr"])
+                    except RuntimeError:
+                        self.running = False
+                        break
 
             time.sleep(self.poll_interval)
 
@@ -82,23 +82,21 @@ class IRacingClient(QtCore.QObject):
             last_laps = self.ir['CarIdxLastLapTime'] or []
             incidents = self.ir['CarIdxIncidentCount'] or []
 
-            #print(f">>> DEBUG Encontrados {len(drivers)} drivers")
-
-            for idx, drv in enumerate(drivers):
-                #print(f"[DEBUG DRIVER] idx={idx} name={drv.get('UserName')} pos={positions[idx] if idx < len(positions) else '??'}")
+            for drv in drivers:
                 name = drv.get('UserName')
-                if not name:
+                car_idx = drv.get("CarIdx")
+                if name is None or car_idx is None:
                     continue
 
-                pos = positions[idx] if idx < len(positions) else 0
+                pos = positions[car_idx] if car_idx < len(positions) else 0
                 if pos <= 0:
-                    pos = idx + 1  # piloto fora do grid
+                    pos = car_idx + 1  # fallback
 
-                grid = qual_pos[idx] if idx < len(qual_pos) else pos
+                grid = qual_pos[car_idx] if car_idx < len(qual_pos) else pos
                 pos_gain = pos - grid if grid and pos > 0 else 0
 
                 # gap p/ líder
-                gap_val = gaps[idx] if idx < len(gaps) else -1
+                gap_val = gaps[car_idx] if car_idx < len(gaps) else -1
                 if pos == 1:
                     gap = "Líder"
                 elif isinstance(gap_val, (int, float)) and gap_val > 0:
@@ -107,11 +105,11 @@ class IRacingClient(QtCore.QObject):
                     gap = "---"
 
                 # última volta
-                last_val = last_laps[idx] if idx < len(last_laps) else -1
+                last_val = last_laps[car_idx] if car_idx < len(last_laps) else -1
                 last = f"{last_val:.3f}" if isinstance(last_val, (int, float)) and last_val > 0 else "--"
 
                 # incidentes
-                inc_val = incidents[idx] if idx < len(incidents) else 0
+                inc_val = incidents[car_idx] if car_idx < len(incidents) else 0
 
                 # licença
                 lic_str = drv.get("LicString", "--")
@@ -125,10 +123,10 @@ class IRacingClient(QtCore.QObject):
                 car_num = drv.get("CarNumberRaw", "--")
                 car_logo = None
                 if "CarPath" in drv:
-                    car_logo = f"assets/cars/{drv['CarPath']}.png"  # precisa existir no disco
-                    
-                #print(f"[DEBUG STANDINGS] pos={pos} driver={name} ir={drv.get('IRating')} last={last} gap={gap}")
+                    car_logo = f"assets/cars/{drv['CarPath']}.png"
+
                 data.append({
+                    "id": car_idx,  # agora usa o CarIdx correto
                     "pos": pos,
                     "pos_gain": pos_gain,
                     "driver": name,
@@ -139,17 +137,15 @@ class IRacingClient(QtCore.QObject):
                     "class_id": class_id,
                     "class_color": class_color,
                     "irating": drv.get('IRating', 0),
-                    "ir_delta": "",  # estimativa futura
+                    "ir_delta": "",
                     "last_lap": last,
                     "gap": gap,
                     "incidents": inc_val,
                 })
 
-            # ordena pela posição
             data.sort(key=lambda d: d["pos"])
         except Exception as e:
             print("[IRacingClient] Erro standings:", e)
-            print(">>> DEBUG STANDINGS DATA", data[:3])  # mostra só os 3 primeiros
 
         return data
 
@@ -163,20 +159,16 @@ class IRacingClient(QtCore.QObject):
 
             sof_general = 0
             class_sof = {}
-
             laps = 0
+
             if session_info and 'Sessions' in session_info:
                 sessions = session_info['Sessions']
                 if sessions and isinstance(sessions, list):
                     first_session = sessions[0]
 
-                    # SOF geral
                     sof_general = first_session.get('StrengthOfField', 0)
-
-                    # Voltas
                     laps = first_session.get('ResultsLapsComplete', 0)
 
-                    # SOF por classe
                     results = first_session.get('ResultsPositions', [])
                     if results and isinstance(results, list):
                         for pos in results:
@@ -193,10 +185,12 @@ class IRacingClient(QtCore.QObject):
                 if isinstance(raw_temp, str):
                     try:
                         track_temp = float(raw_temp.split()[0])
-                    except:
+                    except Exception:
                         track_temp = 0
                 elif isinstance(raw_temp, (int, float)):
                     track_temp = raw_temp
+
+            my_id = self.ir['PlayerCarIdx']
 
             return {
                 "sof": sof_general,
@@ -204,6 +198,7 @@ class IRacingClient(QtCore.QObject):
                 "time": f"{time_remain/60:.1f} min" if isinstance(time_remain, (int, float)) else "--",
                 "laps": laps,
                 "track_temp": f"{track_temp:.1f} °C" if isinstance(track_temp, (int, float)) else "--",
+                "my_driver_id": my_id,
             }
         except Exception as e:
             print("[IRacingClient] Erro sessão:", e)
@@ -231,26 +226,23 @@ class IRacingClient(QtCore.QObject):
         except Exception as e:
             print("[IRacingClient] Erro fuel:", e)
             return {}
-        
+
     # -------------------
     # Car Left/Right
     # -------------------
     def _get_car_lr(self):
         try:
             val = self.ir['CarLeftRight']
-            #print(f"[DEBUG CAR LR RAW] {val}")
 
             status_map = {
-                0: "none",   # nada
-                1: "clear",  # pista livre
-                2: "left",   # carro à esquerda
-                3: "right",  # carro à direita
-                4: "both",   # carros dos dois lados
+                0: "none",
+                1: "clear",
+                2: "left",
+                3: "right",
+                4: "both",
             }
 
             status = status_map.get(val, "none")
-            #print(f"[DEBUG CAR LR STATUS] {status}")
-
             return {"val": val, "status": status}
         except Exception as e:
             print(f"[ERROR CarLR] {e}")

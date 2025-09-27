@@ -32,6 +32,9 @@ class StandingsLayer(BaseLayer):
         header.setStretchLastSection(False)
         header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
 
+        # 🔄 conecta sinal de redimensionamento manual das colunas
+        header.sectionResized.connect(lambda *_: self.resizeEvent(None))
+
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.table.setIconSize(QtCore.QSize(24, 12))
@@ -113,12 +116,15 @@ class StandingsLayer(BaseLayer):
         self.show()
 
     def set_edit_mode(self, editing: bool):
-        """Alterna entre edição e fixo"""
         header = self.table.horizontalHeader()
         if editing:
             header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
         else:
             header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+
+        # força ajuste quando troca de modo
+        self.resizeEvent(None)
+
         super().set_edit_mode(editing)
 
     def update_from_iracing(self, packet):
@@ -137,22 +143,27 @@ class StandingsLayer(BaseLayer):
 
         # filtro "eu + X players"
         saved_cfg = self.cfg_store.load_layer_config(self.layer_id)
-        max_players = saved_cfg.get("max_players")  # defina isso no config.json
+        max_players = saved_cfg.get("max_players", 11)  # valor padrão
+        my_driver_id = session.get("my_driver_id")
 
-        if max_players:
-            my_driver_id = session.get("my_driver_id")
+        if max_players and my_driver_id is not None:
             my_driver = next((d for d in standings if d.get("id") == my_driver_id), None)
             if my_driver:
                 idx = standings.index(my_driver)
-                start = max(0, idx - max_players // 2)
-                end = start + max_players
+                half = max_players // 2
+
+                start = max(0, idx - half)
+                end = min(len(standings), start + max_players)
+
+                # se bater no final da lista, corrige o start
+                if end - start < max_players:
+                    start = max(0, end - max_players)
+
                 standings = standings[start:end]
 
-        #print(f">>> DEBUG UI recebeu {len(standings)} pilotos")
         self.table.setRowCount(len(standings))
         for i, d in enumerate(standings):
             pos = QtWidgets.QTableWidgetItem(str(d.get("pos", "--")))
-
             delta_val = d.get("pos_gain", 0)
             delta = QtWidgets.QTableWidgetItem(
                 f"{'+' if delta_val > 0 else ''}{delta_val}" if delta_val else ""
@@ -163,49 +174,38 @@ class StandingsLayer(BaseLayer):
                 delta.setForeground(QtGui.QBrush(QtGui.QColor("red")))
 
             car_num = QtWidgets.QTableWidgetItem(str(d.get("car_number", "--")))
-
             logo_item = QtWidgets.QTableWidgetItem()
-            logo_path = d.get("car_logo")
-            if logo_path:
-                logo_item.setIcon(QtGui.QIcon(logo_path))
-
+            if d.get("car_logo"):
+                logo_item.setIcon(QtGui.QIcon(d["car_logo"]))
             drv = QtWidgets.QTableWidgetItem(d.get("driver", "--"))
 
             lic = QtWidgets.QTableWidgetItem(d.get("license", "--"))
             lic_color = d.get("license_color", "#333")
             lic.setBackground(QtGui.QBrush(QtGui.QColor(lic_color)))
 
-            ir_val = d.get("irating", "--")
-            ir_delta = d.get("ir_delta", "")
-            ir = QtWidgets.QTableWidgetItem(f"{ir_val} {ir_delta}")
-
+            ir = QtWidgets.QTableWidgetItem(f"{d.get('irating', '--')} {d.get('ir_delta', '')}")
             lap = QtWidgets.QTableWidgetItem(d.get("last_lap", "--"))
             gap = QtWidgets.QTableWidgetItem(d.get("gap", "--"))
             inc = QtWidgets.QTableWidgetItem(str(d.get("incidents", "--")))
 
+            # aplica cor de fundo
+            if d.get("id") == my_driver_id:
+                bg_color = QtGui.QColor(70, 130, 180, 200)  # azul destaque
+            else:
+                bg_color = QtGui.QColor(0, 0, 0, self.alpha) if i % 2 == 0 else QtGui.QColor(30, 30, 30, self.alpha)
+
+            for col, item in enumerate([pos, delta, car_num, logo_item, drv, lic, ir, lap, gap, inc]):
+                self.table.setItem(i, col, item)
+                if item:
+                    item.setBackground(QtGui.QBrush(bg_color))
+
+            # líder continua dourado
             if d.get("pos") == 1:
                 for item in [pos, drv, ir, lap, gap, inc]:
                     item.setForeground(QtGui.QBrush(QtGui.QColor("#FFD700")))
                     font = item.font()
                     font.setBold(True)
                     item.setFont(font)
-
-            self.table.setItem(i, 0, pos)
-            self.table.setItem(i, 1, delta)
-            self.table.setItem(i, 2, car_num)
-            self.table.setItem(i, 3, logo_item)
-            self.table.setItem(i, 4, drv)
-            self.table.setItem(i, 5, lic)
-            self.table.setItem(i, 6, ir)
-            self.table.setItem(i, 7, lap)
-            self.table.setItem(i, 8, gap)
-            self.table.setItem(i, 9, inc)
-
-            bg_color = QtGui.QColor(0, 0, 0, self.alpha) if i % 2 == 0 else QtGui.QColor(30, 30, 30, self.alpha)
-            for col in range(self.table.columnCount()):
-                item = self.table.item(i, col)
-                if item:
-                    item.setBackground(QtGui.QBrush(bg_color))
 
         # Atualiza infos da sessão
         sof = session.get("sof", "--")
@@ -214,13 +214,14 @@ class StandingsLayer(BaseLayer):
         track_temp = session.get("track_temp", "--")
 
         txt = f"SOF Geral: {sof} | Tempo: {race_time} | Voltas: {laps} | Temp. pista: {track_temp}"
-
         class_sof = session.get("class_sof", {})
         if class_sof:
             parts = [f"Classe {cid}: {sof_val}" for cid, sof_val in class_sof.items()]
             txt += " | " + " | ".join(parts)
 
         self.session_label.setText(txt)
+
+
 
     def open_config_dialog(self):
         saved_cfg = self.cfg_store.load_layer_config(self.layer_id)
@@ -249,3 +250,22 @@ class StandingsLayer(BaseLayer):
         })
         super().closeEvent(event)
         event.accept()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        rows = max(1, self.table.rowCount())
+        if rows > 0:
+            row_height = self.table.viewport().height() // rows
+            font_size = max(8, row_height // 2)
+            font = self.table.font()
+            font.setPointSize(font_size)
+            self.table.setFont(font)
+
+            header_font = self.table.horizontalHeader().font()
+            header_font.setPointSize(max(8, font_size - 1))
+            self.table.horizontalHeader().setFont(header_font)
+
+            # só força altura automática se não estiver em modo edição
+            if not getattr(self, "edit_checkbox", None) or not self.edit_checkbox.isChecked():
+                for i in range(self.table.rowCount()):
+                    self.table.setRowHeight(i, row_height)
