@@ -42,7 +42,7 @@ class StandingsLayer(BaseLayer):
                 background-color: transparent;
                 color: white;
                 font-size: 12px;
-                border: 2px solid #444;
+                border: none;
                 gridline-color: #555;
             }
             QHeaderView::section {

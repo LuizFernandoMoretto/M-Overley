@@ -48,8 +48,14 @@ class IRacingClient(QtCore.QObject):
                     "fuel": self._get_fuel(),
                     "car_lr": self._get_car_lr()
                 }
-                # envia o pacote com segurança para a thread Qt
-                self.data_ready.emit(packet)
+
+                if self.running:
+                    try:
+                        self.data_ready.emit(packet)
+                    except RuntimeError:
+                        print("[IRacingClient] Tentou emitir após objeto destruído")
+                        self.running = False
+                        break
 
             time.sleep(self.poll_interval)
 
@@ -225,36 +231,23 @@ class IRacingClient(QtCore.QObject):
     # Car Left/Right
     # -------------------
     def _get_car_lr(self):
-        """Retorna carros próximos para o layer CarLR"""
         try:
-            if 'CarLeftRight' not in self.ir.var_headers:
-                print("[IRacingClient] CarLeftRight não disponível no SDK → usando teste.")
-                return {
-                    "cars": [
-                        {"side": "left", "gap_m": 10},
-                        {"side": "right", "gap_m": 25},
-                    ]
-                }
+            if not self.ir.is_connected:
+                return {"cars": []}
 
+            # Acesso direto ao valor
             val = self.ir['CarLeftRight']
-            print(f"[IRacingClient] Valor cru CarLeftRight={val}")
+            print(f"[DEBUG CarLR] raw={val}")
 
             if val is None:
-                # 🔹 Simulação quando game está fechado
-                return {
-                    "cars": [
-                        {"side": "left", "gap_m": 15},
-                        {"side": "right", "gap_m": 30},
-                    ]
-                }
+                return {"cars": []}
 
             cars = []
-            # 0 = clear, 1 = left, 2 = right, 3 = both
-            if val == 1:
+            if val == 1:  # left
                 cars.append({"side": "left", "gap_m": 10})
-            elif val == 2:
+            elif val == 2:  # right
                 cars.append({"side": "right", "gap_m": 10})
-            elif val == 3:
+            elif val == 3:  # both
                 cars.append({"side": "both", "gap_m": 10})
 
             return {"cars": cars}

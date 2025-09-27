@@ -64,7 +64,7 @@ class ControlPanel(QtWidgets.QWidget):
 
     # -------- Funções de controle --------
     def toggle_layer(self, layer_id, checked):
-        print(f"[ControlPanel] {layer_id} → {checked}")
+        #print(f"[ControlPanel] {layer_id} → {checked}")
         self.app.toggle_layer_visibility(layer_id, checked)
         self.save_layer_states()
 
@@ -72,14 +72,20 @@ class ControlPanel(QtWidgets.QWidget):
         for layer in self.app.layers.values():
             layer.set_locked(checked)
         self.app.locked = checked
-        print(f"[ControlPanel] Layout travado: {checked}")
+        #print(f"[ControlPanel] Layout travado: {checked}")
 
     def toggle_edit_mode(self, checked):
         """Ativa/desativa modo edição em todos os layers"""
         for layer in self.app.layers.values():
             if hasattr(layer, "set_edit_mode"):
                 layer.set_edit_mode(checked)
-        print(f"[ControlPanel] Modo edição: {checked}")
+
+        # se saiu do modo edição, aplica visibilidade conforme checkboxes
+        if not checked:
+            for lid, cb in self.checkboxes.items():
+                self.app.toggle_layer_visibility(lid, cb.isChecked())
+
+        #print(f"[ControlPanel] Modo edição: {checked}")
 
     # -------- Configs por layer --------
     def open_layer_config(self, layer_id):
@@ -192,7 +198,7 @@ class ControlPanel(QtWidgets.QWidget):
             data["layer_configs"][layer_id] = {}
         data["layer_configs"][layer_id].update(cfg)
         save_config(data)
-        print(f"[Config] {layer_id} atualizado:", cfg)
+        #print(f"[Config] {layer_id} atualizado:", cfg)
 
     # -------- Auxiliares de cor --------
     def pick_color(self, button):
