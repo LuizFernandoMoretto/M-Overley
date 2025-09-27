@@ -4,7 +4,6 @@ from core.layout_store import LayoutStore
 from ui.control_panel import ControlPanel
 from layers.standings_layer import StandingsLayer
 from layers.fuel_layer import FuelLayer
-from layers.map_layer import MapLayer
 from layers.car_lr_layer import CarLRLayer
 from core.iracing_client import IRacingClient
 from layers.twitch_chat_layer import TwitchChatLayer
@@ -13,7 +12,6 @@ from layers.twitch_chat_layer import TwitchChatLayer
 LAYER_CLASSES = {
     "standings": StandingsLayer,
     "fuel": FuelLayer,
-    "map": MapLayer,
     "car_lr": CarLRLayer,
     "twitchchat": TwitchChatLayer,
 }
@@ -28,7 +26,6 @@ class OverlayApp(QtWidgets.QApplication):
                 {"id": "standings", "title": "Standings", "visible": True},
                 {"id": "fuel", "title": "Fuel Calc", "visible": True},
                 {"id": "car_lr", "title": "Car Left/Right", "visible": True},
-                {"id": "map", "title": "Track Map", "visible": True},
                 {"id": "twitchchat", "title": "Twitch Chat", "visible": True},
             ]
         }

@@ -4,6 +4,20 @@ from PySide6 import QtCore, QtWidgets, QtGui
 from ui.standings_config_dialog import StandingsConfigDialog
 import copy
 
+COUNTRY_FLAGS = {
+    "Brazil": "🇧🇷",
+    "United States": "🇺🇸",
+    "Germany": "🇩🇪",
+    "France": "🇫🇷",
+    "Italy": "🇮🇹",
+    "Spain": "🇪🇸",
+    "Portugal": "🇵🇹",
+    "Argentina": "🇦🇷",
+    "Canada": "🇨🇦",
+    "United Kingdom": "🇬🇧",
+    # pode expandir conforme os países que aparecem
+}
+
 
 class StandingsLayer(BaseLayer):
     standings_updated = QtCore.Signal(dict)
@@ -21,7 +35,7 @@ class StandingsLayer(BaseLayer):
         self.alpha = saved_cfg.get("alpha", 220)
 
         # Tabela de standings
-        headers = ["Pos", "Δ", "#", "Logo", "Driver", "Lic", "iRating", "Últ. Volta", "Gap", "Inc."]
+        headers = ["Pos", "Δ", "#", "Logo", "Flag", "Driver", "Lic", "iRating", "Últ. Volta", "Gap"]
         self.table = QtWidgets.QTableWidget(self)
         self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(headers)
@@ -32,14 +46,14 @@ class StandingsLayer(BaseLayer):
         header.setStretchLastSection(False)
         header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
 
-        # 🔄 conecta sinal de redimensionamento manual das colunas
-        header.sectionResized.connect(lambda *_: self.resizeEvent(None))
-
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.table.setIconSize(QtCore.QSize(24, 12))
 
-        # Estilos (incluindo esconder barras de rolagem feiosas)
+        # guarda posição inicial quando não há qualy
+        self._starting_positions = {}
+
+        # Estilos
         self.table.setStyleSheet("""
             QTableWidget {
                 background-color: transparent;
@@ -67,16 +81,16 @@ class StandingsLayer(BaseLayer):
 
         # Larguras padrão
         default_widths = {
-            "Pos": 40,
-            "Δ": 40,
-            "#": 40,
-            "Logo": 50,
+            "Pos": 20,
+            "Δ": 20,
+            "#": 20,
+            "Logo": 20,
+            "Flag": 20,
             "Driver": 150,
-            "Lic": 60,
-            "iRating": 80,
-            "Últ. Volta": 90,
-            "Gap": 80,
-            "Inc.": 50,
+            "Lic": 30,
+            "iRating": 30,
+            "Últ. Volta": 40,
+            "Gap": 20,
         }
 
         saved_widths = saved_cfg.get("columns_width", {})
@@ -85,7 +99,7 @@ class StandingsLayer(BaseLayer):
             width = saved_widths.get(header_text, default_widths.get(header_text, 80))
             self.table.setColumnWidth(col, width)
 
-        # Restaurar estado completo do header (ordem e larguras)
+        # Restaurar estado completo do header
         saved_header = saved_cfg.get("header_state")
         if saved_header:
             self.table.horizontalHeader().restoreState(QtCore.QByteArray.fromHex(saved_header.encode()))
@@ -110,7 +124,6 @@ class StandingsLayer(BaseLayer):
 
         # registra listener
         if hasattr(self.app, "iracing_client"):
-            #print(">>> DEBUG Registrando standings no iracing_client")
             self.app.iracing_client.add_listener(self.update_from_iracing)
 
         self.show()
@@ -121,10 +134,6 @@ class StandingsLayer(BaseLayer):
             header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
         else:
             header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
-
-        # força ajuste quando troca de modo
-        self.resizeEvent(None)
-
         super().set_edit_mode(editing)
 
     def update_from_iracing(self, packet):
@@ -143,7 +152,7 @@ class StandingsLayer(BaseLayer):
 
         # filtro "eu + X players"
         saved_cfg = self.cfg_store.load_layer_config(self.layer_id)
-        max_players = saved_cfg.get("max_players", 11)  # valor padrão
+        max_players = saved_cfg.get("max_players", 11)
         my_driver_id = session.get("my_driver_id")
 
         if max_players and my_driver_id is not None:
@@ -151,33 +160,38 @@ class StandingsLayer(BaseLayer):
             if my_driver:
                 idx = standings.index(my_driver)
                 half = max_players // 2
-
                 start = max(0, idx - half)
                 end = min(len(standings), start + max_players)
-
-                # se bater no final da lista, corrige o start
                 if end - start < max_players:
                     start = max(0, end - max_players)
-
                 standings = standings[start:end]
 
         self.table.setRowCount(len(standings))
         for i, d in enumerate(standings):
             pos = QtWidgets.QTableWidgetItem(str(d.get("pos", "--")))
+
+            # --- Delta estilizado ---
             delta_val = d.get("pos_gain", 0)
-            delta = QtWidgets.QTableWidgetItem(
-                f"{'+' if delta_val > 0 else ''}{delta_val}" if delta_val else ""
-            )
             if delta_val > 0:
+                delta = QtWidgets.QTableWidgetItem(f"+{delta_val}")
                 delta.setForeground(QtGui.QBrush(QtGui.QColor("lime")))
             elif delta_val < 0:
+                delta = QtWidgets.QTableWidgetItem(str(delta_val))
                 delta.setForeground(QtGui.QBrush(QtGui.QColor("red")))
+            else:
+                delta = QtWidgets.QTableWidgetItem("0")
+                delta.setForeground(QtGui.QBrush(QtGui.QColor("lightgray")))
 
             car_num = QtWidgets.QTableWidgetItem(str(d.get("car_number", "--")))
             logo_item = QtWidgets.QTableWidgetItem()
             if d.get("car_logo"):
                 logo_item.setIcon(QtGui.QIcon(d["car_logo"]))
             drv = QtWidgets.QTableWidgetItem(d.get("driver", "--"))
+
+            # Flag por país
+            country = (d.get("country") or "").title()
+            flag_item = QtWidgets.QTableWidgetItem(COUNTRY_FLAGS.get(country, "🏳️"))
+            flag_item.setTextAlignment(QtCore.Qt.AlignCenter)
 
             lic = QtWidgets.QTableWidgetItem(d.get("license", "--"))
             lic_color = d.get("license_color", "#333")
@@ -186,7 +200,6 @@ class StandingsLayer(BaseLayer):
             ir = QtWidgets.QTableWidgetItem(f"{d.get('irating', '--')} {d.get('ir_delta', '')}")
             lap = QtWidgets.QTableWidgetItem(d.get("last_lap", "--"))
             gap = QtWidgets.QTableWidgetItem(d.get("gap", "--"))
-            inc = QtWidgets.QTableWidgetItem(str(d.get("incidents", "--")))
 
             # aplica cor de fundo
             if d.get("id") == my_driver_id:
@@ -194,14 +207,18 @@ class StandingsLayer(BaseLayer):
             else:
                 bg_color = QtGui.QColor(0, 0, 0, self.alpha) if i % 2 == 0 else QtGui.QColor(30, 30, 30, self.alpha)
 
-            for col, item in enumerate([pos, delta, car_num, logo_item, drv, lic, ir, lap, gap, inc]):
-                self.table.setItem(i, col, item)
+            for col, item in enumerate([pos, delta, car_num, logo_item, flag_item, drv, lic, ir, lap, gap]):
                 if item:
+                    if col == 5:  # coluna "Driver"
+                        item.setTextAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft)
+                    else:
+                        item.setTextAlignment(QtCore.Qt.AlignCenter)
                     item.setBackground(QtGui.QBrush(bg_color))
+                    self.table.setItem(i, col, item)
 
             # líder continua dourado
             if d.get("pos") == 1:
-                for item in [pos, drv, ir, lap, gap, inc]:
+                for item in [pos, drv, ir, lap, gap]:
                     item.setForeground(QtGui.QBrush(QtGui.QColor("#FFD700")))
                     font = item.font()
                     font.setBold(True)
@@ -209,19 +226,16 @@ class StandingsLayer(BaseLayer):
 
         # Atualiza infos da sessão
         sof = session.get("sof", "--")
-        race_time = session.get("time", "--")
-        laps = session.get("laps", "--")
+        length = session.get("session_length", "--")
+        remain = session.get("time_remain", None)
         track_temp = session.get("track_temp", "--")
 
-        txt = f"SOF Geral: {sof} | Tempo: {race_time} | Voltas: {laps} | Temp. pista: {track_temp}"
-        class_sof = session.get("class_sof", {})
-        if class_sof:
-            parts = [f"Classe {cid}: {sof_val}" for cid, sof_val in class_sof.items()]
-            txt += " | " + " | ".join(parts)
+        txt = f"SOF Geral: {sof} | Sessão: {length}"
+        if remain:  # só aparece em sessão por tempo
+            txt += f" | Restante: {remain}"
+        txt += f" | Temp. pista: {track_temp}"
 
         self.session_label.setText(txt)
-
-
 
     def open_config_dialog(self):
         saved_cfg = self.cfg_store.load_layer_config(self.layer_id)
@@ -230,7 +244,6 @@ class StandingsLayer(BaseLayer):
         dlg = StandingsConfigDialog(self, current_max)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             new_max = dlg.get_value()
-            # salva no config
             saved_cfg["max_players"] = new_max
             self.cfg_store.save_layer_config(self.layer_id, saved_cfg)
             print(f">>> Standings atualizado: max_players = {new_max}")
@@ -250,22 +263,3 @@ class StandingsLayer(BaseLayer):
         })
         super().closeEvent(event)
         event.accept()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        rows = max(1, self.table.rowCount())
-        if rows > 0:
-            row_height = self.table.viewport().height() // rows
-            font_size = max(8, row_height // 2)
-            font = self.table.font()
-            font.setPointSize(font_size)
-            self.table.setFont(font)
-
-            header_font = self.table.horizontalHeader().font()
-            header_font.setPointSize(max(8, font_size - 1))
-            self.table.horizontalHeader().setFont(header_font)
-
-            # só força altura automática se não estiver em modo edição
-            if not getattr(self, "edit_checkbox", None) or not self.edit_checkbox.isChecked():
-                for i in range(self.table.rowCount()):
-                    self.table.setRowHeight(i, row_height)

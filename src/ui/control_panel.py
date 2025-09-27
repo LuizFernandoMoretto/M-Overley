@@ -9,18 +9,59 @@ class ControlPanel(QtWidgets.QWidget):
     def __init__(self, layers_meta, app):
         super().__init__()
         self.app = app
-        self.setWindowTitle("Overlay Control Panel")
-        self.setGeometry(100, 100, 350, 500)
+        self.setWindowTitle("M-Overlay Control Panel")
+        self.setGeometry(100, 100, 380, 520)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                font-family: Segoe UI, Arial;
+                font-size: 12px;
+            }
+            QPushButton {
+                background-color: #3a3a3a;
+                border: 1px solid #555;
+                border-radius: 6px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #505050;
+            }
+            QGroupBox {
+                border: 1px solid #444;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 15px;
+                font-weight: bold;
+            }
+        """)
 
         main_layout = QtWidgets.QVBoxLayout(self)
 
-        # ---------------- CAMADAS ----------------
+        # ---------- LOGO ----------
+        logo = QtWidgets.QLabel()
+        if os.path.exists("logo.png"):
+            pixmap = QtGui.QPixmap("logo.png").scaled(
+                200, 90,
+                QtCore.Qt.KeepAspectRatio,
+                QtCore.Qt.SmoothTransformation
+            )
+            logo.setPixmap(pixmap)
+        else:
+            logo.setText("M-Overlay")
+            logo.setStyleSheet("font-size: 20px; font-weight: bold; color: #00d9ff;")
+        logo.setAlignment(QtCore.Qt.AlignCenter)
+        main_layout.addWidget(logo)
+
+        # ---------- CAMADAS ----------
         layers_group = QtWidgets.QGroupBox("Camadas")
         layers_layout = QtWidgets.QVBoxLayout(layers_group)
 
         # Botão para salvar layout
         btn_save = QtWidgets.QPushButton("Salvar Layout")
+        btn_save.setIcon(QtGui.QIcon.fromTheme("document-save"))
         btn_save.clicked.connect(self.app.save_layouts)
+        btn_save.setFixedHeight(32)
         layers_layout.addWidget(btn_save)
 
         # Checkbox para modo edição
@@ -33,6 +74,7 @@ class ControlPanel(QtWidgets.QWidget):
         self.lock_checkbox.toggled.connect(self.toggle_lock)
         layers_layout.addWidget(self.lock_checkbox)
 
+        # Camadas ativas
         layers_layout.addWidget(QtWidgets.QLabel("Camadas Ativas:"))
 
         self.checkboxes = {}
@@ -56,15 +98,32 @@ class ControlPanel(QtWidgets.QWidget):
         layers_group.setLayout(layers_layout)
         main_layout.addWidget(layers_group)
 
+        main_layout.addStretch()
+
+        # ---------- FOOTER ----------
+        footer_layout = QtWidgets.QHBoxLayout()
+        by_label = QtWidgets.QLabel("By: Moretto")
+        by_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        footer_layout.addWidget(by_label, alignment=QtCore.Qt.AlignLeft)
+
+        donate_btn = QtWidgets.QPushButton()
+        if os.path.exists("donate.png"):
+            donate_btn.setIcon(QtGui.QIcon("donate.png"))
+        else:
+            donate_btn.setText("☕")
+        donate_btn.setToolTip("Apoie o projeto com uma doação")
+        donate_btn.setFixedSize(32, 32)
+        donate_btn.setStyleSheet("border: none; background: transparent;")
+        footer_layout.addWidget(donate_btn, alignment=QtCore.Qt.AlignRight)
+
+        main_layout.addLayout(footer_layout)
+
         # Centraliza painel
         self.center_on_screen()
-
-        # Restaura estado dos checkboxes
         self.load_layer_states()
 
     # -------- Funções de controle --------
     def toggle_layer(self, layer_id, checked):
-        #print(f"[ControlPanel] {layer_id} → {checked}")
         self.app.toggle_layer_visibility(layer_id, checked)
         self.save_layer_states()
 
@@ -72,20 +131,14 @@ class ControlPanel(QtWidgets.QWidget):
         for layer in self.app.layers.values():
             layer.set_locked(checked)
         self.app.locked = checked
-        #print(f"[ControlPanel] Layout travado: {checked}")
 
     def toggle_edit_mode(self, checked):
-        """Ativa/desativa modo edição em todos os layers"""
         for layer in self.app.layers.values():
             if hasattr(layer, "set_edit_mode"):
                 layer.set_edit_mode(checked)
-
-        # se saiu do modo edição, aplica visibilidade conforme checkboxes
         if not checked:
             for lid, cb in self.checkboxes.items():
                 self.app.toggle_layer_visibility(lid, cb.isChecked())
-
-        #print(f"[ControlPanel] Modo edição: {checked}")
 
     # -------- Configs por layer --------
     def open_layer_config(self, layer_id):
@@ -106,28 +159,24 @@ class ControlPanel(QtWidgets.QWidget):
             layout.addWidget(btn_save)
 
         elif layer_id == "car_lr":
-            # Largura
             spin = QtWidgets.QSpinBox()
             spin.setRange(10, 100)
             spin.setValue(int(cfg.get("width_ratio", 0.33) * 100))
             layout.addWidget(QtWidgets.QLabel("Largura (%)"))
             layout.addWidget(spin)
 
-            # Transparência
             slider_alpha = QtWidgets.QSlider(QtCore.Qt.Horizontal)
             slider_alpha.setRange(50, 255)
             slider_alpha.setValue(cfg.get("alpha", 220))
             layout.addWidget(QtWidgets.QLabel("Transparência"))
             layout.addWidget(slider_alpha)
 
-            # Botão de cor
             btn_color = QtWidgets.QPushButton("Escolher Cor")
             current_color = QtGui.QColor(cfg.get("color", "#FFD800"))
             self._update_button_color(btn_color, current_color)
             btn_color.clicked.connect(lambda: self.pick_color(btn_color))
             layout.addWidget(btn_color)
 
-            # Botão salvar
             btn_save = QtWidgets.QPushButton("Salvar")
             btn_save.clicked.connect(lambda: self._save_and_close(dialog, layer_id, {
                 "width_ratio": spin.value() / 100,
@@ -135,24 +184,21 @@ class ControlPanel(QtWidgets.QWidget):
                 "color": btn_color.property("chosen_color").name()
             }))
             layout.addWidget(btn_save)
-        
+
         elif layer_id == "standings":
-            # Transparência
             slider_alpha = QtWidgets.QSlider(QtCore.Qt.Horizontal)
             slider_alpha.setRange(50, 255)
             slider_alpha.setValue(cfg.get("alpha", 220))
             layout.addWidget(QtWidgets.QLabel("Transparência"))
             layout.addWidget(slider_alpha)
 
-            # Max Players
             spin_players = QtWidgets.QSpinBox()
-            spin_players.setRange(0, 60)  # 0 = todos
+            spin_players.setRange(0, 60)
             spin_players.setValue(cfg.get("max_players", 0))
             spin_players.setSuffix(" jogadores (0 = todos)")
             layout.addWidget(QtWidgets.QLabel("Mostrar você + X jogadores"))
             layout.addWidget(spin_players)
 
-            # Botão salvar
             btn_save = QtWidgets.QPushButton("Salvar")
             btn_save.clicked.connect(lambda: self._save_and_close(dialog, layer_id, {
                 "alpha": slider_alpha.value(),
@@ -161,14 +207,12 @@ class ControlPanel(QtWidgets.QWidget):
             layout.addWidget(btn_save)
 
         elif layer_id == "fuel":
-            # Transparência
             slider_alpha = QtWidgets.QSlider(QtCore.Qt.Horizontal)
             slider_alpha.setRange(50, 255)
             slider_alpha.setValue(cfg.get("alpha", 220))
             layout.addWidget(QtWidgets.QLabel("Transparência"))
             layout.addWidget(slider_alpha)
 
-            # Zebra striping
             zebra_cb = QtWidgets.QCheckBox("Ativar zebra striping (linhas alternadas)")
             zebra_cb.setChecked(cfg.get("zebra", True))
             layout.addWidget(zebra_cb)
@@ -198,7 +242,6 @@ class ControlPanel(QtWidgets.QWidget):
             data["layer_configs"][layer_id] = {}
         data["layer_configs"][layer_id].update(cfg)
         save_config(data)
-        #print(f"[Config] {layer_id} atualizado:", cfg)
 
     # -------- Auxiliares de cor --------
     def pick_color(self, button):
