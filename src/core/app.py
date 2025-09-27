@@ -161,7 +161,7 @@ class OverlayApp(QtWidgets.QApplication):
 
     def save_layouts(self):
         for layer_id, layer in self.layers.items():
-            print(f"Saving layout for {layer_id}")
+            #print(f"Saving layout for {layer_id}")
             rect = layer.save_layout()
             self.store.save_layer(layer_id, rect)
 
@@ -186,7 +186,7 @@ class OverlayApp(QtWidgets.QApplication):
             layer.hide()
 
     def closeEvent(self, event):
-        print("Encerrando OverlayApp...")
+        #print("Encerrando OverlayApp...")
         # Salva antes de sair
         self.save_layouts()
 

@@ -19,7 +19,7 @@ class IRacingClient(QtCore.QObject):
     data_ready = QtCore.Signal(dict)
     car_lr_changed = QtCore.Signal(dict)
 
-    def __init__(self, poll_interval=1.0):
+    def __init__(self, poll_interval=0.3): #Intervalo de atualização
         super().__init__()
         self.ir = irsdk.IRSDK()
         self.running = False
@@ -82,10 +82,10 @@ class IRacingClient(QtCore.QObject):
             last_laps = self.ir['CarIdxLastLapTime'] or []
             incidents = self.ir['CarIdxIncidentCount'] or []
 
-            print(f">>> DEBUG Encontrados {len(drivers)} drivers")
+            #print(f">>> DEBUG Encontrados {len(drivers)} drivers")
 
             for idx, drv in enumerate(drivers):
-                print(f"[DEBUG DRIVER] idx={idx} name={drv.get('UserName')} pos={positions[idx] if idx < len(positions) else '??'}")
+                #print(f"[DEBUG DRIVER] idx={idx} name={drv.get('UserName')} pos={positions[idx] if idx < len(positions) else '??'}")
                 name = drv.get('UserName')
                 if not name:
                     continue
@@ -127,7 +127,7 @@ class IRacingClient(QtCore.QObject):
                 if "CarPath" in drv:
                     car_logo = f"assets/cars/{drv['CarPath']}.png"  # precisa existir no disco
                     
-                print(f"[DEBUG STANDINGS] pos={pos} driver={name} ir={drv.get('IRating')} last={last} gap={gap}")
+                #print(f"[DEBUG STANDINGS] pos={pos} driver={name} ir={drv.get('IRating')} last={last} gap={gap}")
                 data.append({
                     "pos": pos,
                     "pos_gain": pos_gain,
@@ -238,7 +238,7 @@ class IRacingClient(QtCore.QObject):
     def _get_car_lr(self):
         try:
             val = self.ir['CarLeftRight']
-            print(f"[DEBUG CAR LR RAW] {val}")
+            #print(f"[DEBUG CAR LR RAW] {val}")
 
             status_map = {
                 0: "none",   # nada
@@ -249,7 +249,7 @@ class IRacingClient(QtCore.QObject):
             }
 
             status = status_map.get(val, "none")
-            print(f"[DEBUG CAR LR STATUS] {status}")
+            #print(f"[DEBUG CAR LR STATUS] {status}")
 
             return {"val": val, "status": status}
         except Exception as e:

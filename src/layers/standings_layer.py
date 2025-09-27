@@ -107,7 +107,7 @@ class StandingsLayer(BaseLayer):
 
         # registra listener
         if hasattr(self.app, "iracing_client"):
-            print(">>> DEBUG Registrando standings no iracing_client")
+            #print(">>> DEBUG Registrando standings no iracing_client")
             self.app.iracing_client.add_listener(self.update_from_iracing)
 
         self.show()
@@ -148,7 +148,7 @@ class StandingsLayer(BaseLayer):
                 end = start + max_players
                 standings = standings[start:end]
 
-        print(f">>> DEBUG UI recebeu {len(standings)} pilotos")
+        #print(f">>> DEBUG UI recebeu {len(standings)} pilotos")
         self.table.setRowCount(len(standings))
         for i, d in enumerate(standings):
             pos = QtWidgets.QTableWidgetItem(str(d.get("pos", "--")))
