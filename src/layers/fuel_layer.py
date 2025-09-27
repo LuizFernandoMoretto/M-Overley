@@ -21,15 +21,15 @@ class FuelLayer(BaseLayer):
 
         self.table.setStyleSheet("""
             QTableWidget {
-                background-color: rgba(20, 20, 20, 200);
+                background-color: #000000;
                 color: white;
                 font-size: 14px;
                 border: 2px solid #444;
                 gridline-color: #555;
             }
             QHeaderView::section {
-                background-color: #222;
-                color: #00ff88;
+                background-color: #111;
+                color: white;
                 font-weight: bold;
                 border: none;
                 padding: 4px;
@@ -39,7 +39,7 @@ class FuelLayer(BaseLayer):
         labels = ["Fuel atual", "Capacidade", "Consumo/volta", "Voltas restantes"]
         for i, lbl in enumerate(labels):
             item = QtWidgets.QTableWidgetItem(lbl)
-            item.setForeground(QtGui.QBrush(QtGui.QColor("#00ff88")))
+            item.setForeground(QtGui.QBrush(QtGui.QColor("white")))
             font = item.font()
             font.setBold(True)
             item.setFont(font)
@@ -84,7 +84,11 @@ class FuelLayer(BaseLayer):
         ]
 
         for i, val in enumerate(values):
-            self.table.setItem(i, 1, QtWidgets.QTableWidgetItem(val))
+            value_item = QtWidgets.QTableWidgetItem(val)
+            # 🎨 zebra striping: preto/cinza
+            bg_color = "#000000" if i % 2 == 0 else "#1a1a1a"
+            value_item.setBackground(QtGui.QBrush(QtGui.QColor(bg_color)))
+            self.table.setItem(i, 1, value_item)
 
         self.table.viewport().update()
         self.table.repaint()

@@ -4,6 +4,16 @@ import threading
 import time
 
 
+def _argb_to_hex(val):
+    """Converte valor ARGB do iRacing em #RRGGBB"""
+    if isinstance(val, int):
+        r = (val >> 16) & 0xFF
+        g = (val >> 8) & 0xFF
+        b = val & 0xFF
+        return f"#{r:02x}{g:02x}{b:02x}"
+    return "#333333"
+
+
 class IRacingClient(QtCore.QObject):
     # Sinal Qt → dispara pacotes de dados na thread principal
     data_ready = QtCore.Signal(dict)
@@ -61,31 +71,28 @@ class IRacingClient(QtCore.QObject):
 
             print(f">>> DEBUG Encontrados {len(drivers)} drivers")
 
-            # líder da corrida
-            leader_idx = None
-            if positions and 1 in positions:
-                leader_idx = positions.index(1)
-            leader_time = gaps[leader_idx] if leader_idx is not None and leader_idx < len(gaps) else 0.0
-
             for idx, drv in enumerate(drivers):
+                print(f"[DEBUG DRIVER] idx={idx} name={drv.get('UserName')} pos={positions[idx] if idx < len(positions) else '??'}")
                 name = drv.get('UserName')
                 if not name:
                     continue
 
                 pos = positions[idx] if idx < len(positions) else 0
                 if pos <= 0:
-                    continue  # piloto fora do grid
+                    pos = idx + 1
+                # piloto fora do grid
 
                 grid = qual_pos[idx] if idx < len(qual_pos) else pos
-                pos_gain = grid - pos if grid and pos > 0 else 0
+                pos_gain = pos - grid if grid and pos > 0 else 0
 
                 # gap p/ líder
                 gap_val = gaps[idx] if idx < len(gaps) else -1
-                gap = "---"
-                if isinstance(gap_val, (int, float)):
-                    if leader_idx is not None and leader_time > 0:
-                        delta = gap_val - leader_time
-                        gap = f"+{delta:.1f}s" if delta > 0.05 else "Líder"
+                if pos == 1:
+                    gap = "Líder"
+                elif isinstance(gap_val, (int, float)) and gap_val > 0:
+                    gap = f"+{gap_val:.1f}s"
+                else:
+                    gap = "---"
 
                 # última volta
                 last_val = last_laps[idx] if idx < len(last_laps) else -1
@@ -96,18 +103,19 @@ class IRacingClient(QtCore.QObject):
 
                 # licença
                 lic_str = drv.get("LicString", "--")
-                lic_color = f"#{drv.get('LicColor', '333333')}"
+                lic_color = _argb_to_hex(drv.get("LicColor"))
 
                 # classe
                 class_id = drv.get("CarClassID")
-                class_color = f"#{drv.get('CarClassColor', '222222')}"
+                class_color = _argb_to_hex(drv.get("CarClassColor"))
 
                 # carro
                 car_num = drv.get("CarNumberRaw", "--")
                 car_logo = None
                 if "CarPath" in drv:
-                    car_logo = f"assets/cars/{drv['CarPath']}.png"
-
+                    car_logo = f"assets/cars/{drv['CarPath']}.png"  # precisa existir no disco
+                    
+                print(f"[DEBUG STANDINGS] pos={pos} driver={name} ir={drv.get('IRating')} last={last} gap={gap}")
                 data.append({
                     "pos": pos,
                     "pos_gain": pos_gain,
@@ -129,6 +137,7 @@ class IRacingClient(QtCore.QObject):
             data.sort(key=lambda d: d["pos"])
         except Exception as e:
             print("[IRacingClient] Erro standings:", e)
+            print(">>> DEBUG STANDINGS DATA", data[:3])  # mostra só os 3 primeiros
 
         return data
 
@@ -155,7 +164,7 @@ class IRacingClient(QtCore.QObject):
                     # Voltas
                     laps = first_session.get('ResultsLapsComplete', 0)
 
-                    # SOF por classe (se disponível em ResultsPositions)
+                    # SOF por classe
                     results = first_session.get('ResultsPositions', [])
                     if results and isinstance(results, list):
                         for pos in results:
@@ -179,7 +188,7 @@ class IRacingClient(QtCore.QObject):
 
             return {
                 "sof": sof_general,
-                "class_sof": class_sof,  # <- novidade
+                "class_sof": class_sof,
                 "time": f"{time_remain/60:.1f} min" if isinstance(time_remain, (int, float)) else "--",
                 "laps": laps,
                 "track_temp": f"{track_temp:.1f} °C" if isinstance(track_temp, (int, float)) else "--",

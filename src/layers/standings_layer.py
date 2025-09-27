@@ -90,6 +90,7 @@ class StandingsLayer(BaseLayer):
         standings = packet.get("standings", [])
         session = packet.get("session", {})
 
+        print(f">>> DEBUG UI recebeu {len(standings)} pilotos")
         self.table.setRowCount(len(standings))
         for i, d in enumerate(standings):
             # Campos
