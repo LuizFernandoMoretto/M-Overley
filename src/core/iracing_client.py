@@ -45,7 +45,8 @@ class IRacingClient(QtCore.QObject):
                 packet = {
                     "standings": self._get_standings(),
                     "session": self._get_session_info(),
-                    "fuel": self._get_fuel()
+                    "fuel": self._get_fuel(),
+                    "CarLeftRight": self.ir['CarLeftRight'] if 'CarLeftRight' in self.ir else 0
                 }
                 # envia o pacote com segurança para a thread Qt
                 self.data_ready.emit(packet)

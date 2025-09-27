@@ -19,10 +19,23 @@ class CarLRLayer(BaseLayer):
 
         self.hide()
 
+    # ---------- EDIT MODE PREVIEW ----------
+    def set_edit_mode(self, editing: bool):
+        super().set_edit_mode(editing)
+        if editing:
+            # Força um preview visual (barras dos dois lados)
+            self.side = "both"
+            self.fade_in()
+        else:
+            # Sai do modo edição → volta para o estado real
+            self.side = "clear"
+            self.fade_out()
+
+    # ---------- UPDATE DO IRACING ----------
     def update_from_iracing(self, packet):
         """Atualiza com base no campo CarLeftRight do iRacing"""
-        if "CarLeftRight" not in packet:
-            return
+        if "CarLeftRight" not in packet or self._editing:
+            return  # em modo edição, não atualiza pelo jogo
 
         val = packet["CarLeftRight"]
         new_side = "clear"
@@ -41,6 +54,7 @@ class CarLRLayer(BaseLayer):
                 self.fade_in()
             self.update()
 
+    # ---------- ANIMAÇÕES ----------
     def fade_in(self):
         self.show()
         self.anim.stop()
@@ -55,6 +69,7 @@ class CarLRLayer(BaseLayer):
         self.anim.start()
         self.anim.finished.connect(self.hide)
 
+    # ---------- DESENHO ----------
     def paintEvent(self, event):
         if self.side == "clear":
             return
@@ -62,13 +77,13 @@ class CarLRLayer(BaseLayer):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
 
-        # cor: amarelo suave (pode virar configurável depois)
+        # cor padrão (pode ser sobrescrita via config)
         color = QtGui.QColor(255, 220, 0, 220)  # RGBA
         painter.setBrush(color)
         painter.setPen(QtCore.Qt.NoPen)
 
         rect = self.rect()
-        bar_width = int(rect.width() * 0.33)  # largura = 1/3 (padrão, depois configurável)
+        bar_width = int(rect.width() * 0.33)  # largura padrão (1/3)
 
         if self.side == "left":
             bar = QtCore.QRect(0, 0, bar_width, rect.height())
