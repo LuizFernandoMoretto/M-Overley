@@ -17,15 +17,16 @@ def _argb_to_hex(val):
 class IRacingClient(QtCore.QObject):
     # Sinal Qt → dispara pacotes de dados na thread principal
     data_ready = QtCore.Signal(dict)
+    car_lr_changed = QtCore.Signal(dict)
 
     def __init__(self, poll_interval=1.0):
         super().__init__()
         self.ir = irsdk.IRSDK()
         self.running = False
         self.poll_interval = poll_interval
+        self._last_car_lr = None
 
     def start(self):
-        print(">>> DEBUG IRacingClient.start()")
         self.running = True
         self.thread = threading.Thread(target=self.loop, daemon=True)
         self.thread.start()
@@ -34,28 +35,33 @@ class IRacingClient(QtCore.QObject):
         self.running = False
 
     def loop(self):
-        print(">>> DEBUG loop iniciado")
         while self.running:
             if not self.ir.is_initialized:
-                print(">>> DEBUG chamando ir.startup()")
                 self.ir.startup()
 
             if self.ir.is_initialized and self.ir.is_connected:
                 self.ir.freeze_var_buffer_latest()
+
                 packet = {
                     "standings": self._get_standings(),
                     "session": self._get_session_info(),
                     "fuel": self._get_fuel(),
-                    "car_lr": self._get_car_lr()
+                    "car_lr": self._get_car_lr()   # ✅ aqui vai pro UI
                 }
 
-                if self.running:
-                    try:
-                        self.data_ready.emit(packet)
-                    except RuntimeError:
-                        print("[IRacingClient] Tentou emitir após objeto destruído")
-                        self.running = False
-                        break
+                try:
+                    self.data_ready.emit(packet)
+                except RuntimeError:
+                    self.running = False
+                    break
+
+            if packet["car_lr"] != self._last_car_lr:
+                self._last_car_lr = packet["car_lr"]
+                try:
+                    self.car_lr_changed.emit(packet["car_lr"])
+                except RuntimeError:
+                    self.running = False
+                    break
 
             time.sleep(self.poll_interval)
 
@@ -86,8 +92,7 @@ class IRacingClient(QtCore.QObject):
 
                 pos = positions[idx] if idx < len(positions) else 0
                 if pos <= 0:
-                    pos = idx + 1
-                # piloto fora do grid
+                    pos = idx + 1  # piloto fora do grid
 
                 grid = qual_pos[idx] if idx < len(qual_pos) else pos
                 pos_gain = pos - grid if grid and pos > 0 else 0
@@ -232,25 +237,21 @@ class IRacingClient(QtCore.QObject):
     # -------------------
     def _get_car_lr(self):
         try:
-            if not self.ir.is_connected:
-                return {"cars": []}
-
-            # Acesso direto ao valor
             val = self.ir['CarLeftRight']
-            print(f"[DEBUG CarLR] raw={val}")
+            print(f"[DEBUG CAR LR RAW] {val}")
 
-            if val is None:
-                return {"cars": []}
+            status_map = {
+                0: "none",   # nada
+                1: "clear",  # pista livre
+                2: "left",   # carro à esquerda
+                3: "right",  # carro à direita
+                4: "both",   # carros dos dois lados
+            }
 
-            cars = []
-            if val == 1:  # left
-                cars.append({"side": "left", "gap_m": 10})
-            elif val == 2:  # right
-                cars.append({"side": "right", "gap_m": 10})
-            elif val == 3:  # both
-                cars.append({"side": "both", "gap_m": 10})
+            status = status_map.get(val, "none")
+            print(f"[DEBUG CAR LR STATUS] {status}")
 
-            return {"cars": cars}
+            return {"val": val, "status": status}
         except Exception as e:
-            print("[IRacingClient] Erro car_lr:", e)
-            return {"cars": []}
+            print(f"[ERROR CarLR] {e}")
+            return {"val": 0, "status": "none"}

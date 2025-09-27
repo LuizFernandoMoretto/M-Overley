@@ -1,132 +1,76 @@
 from PySide6 import QtWidgets, QtGui, QtCore
-import time
 from layers.base_layer import BaseLayer
+from core.config_store import ConfigStore
 
 
 class CarLRLayer(BaseLayer):
-    def __init__(self, app, layer_id="car_lr", title="Car Left/Right", initial_rect=None):
+    def __init__(self, app, layer_id="car_lr", title="Car L/R", initial_rect=None):
         super().__init__(app, layer_id, title, initial_rect)
-        self.setWindowFlags(self.windowFlags() | QtCore.Qt.FramelessWindowHint)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
 
-        # Estado interno
-        self.near_cars = []
-        self.alpha = 200
-        self.color = QtGui.QColor("#FFD800")
-        self.editing_overlay = False
+        # Configuração com persistência
+        self.cfg_store = ConfigStore()
+        saved_cfg = self.cfg_store.load_layer_config(layer_id)
 
-        # Alturas animadas
-        self.current_heights = {"left": 0, "right": 0}
-        self.target_heights = {"left": 0, "right": 0}
+        self.box_size = saved_cfg.get("box_size", 60)
+        self.alpha_on = saved_cfg.get("alpha_on", 220)
+        self.alpha_off = saved_cfg.get("alpha_off", 40)
+        self.color = saved_cfg.get("color", "#ffff00")  # padrão: amarelo
 
-        # Controle de tempo para animação
-        self._last_time = time.time()
+        self.left_active = False
+        self.right_active = False
 
-        # Timer mais lento (10 FPS) só para checar animação
+        # Timer de redraw rápido (20fps)
         self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.update_animation)
-        self.timer.start(100)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(50)
 
-        self.show()
-
-    # ---------------- Atualização do iRacing ----------------
-    def update_from_iracing(self, packet):
-        if self.editing_overlay:
-            return
-
+    def update_from_iracing(self, packet: dict):
+        """Recebe dados do iRacing enviados pelo OverlayApp"""
         car_lr = packet.get("car_lr", {})
-        new_near_cars = car_lr.get("cars", [])
+        val = car_lr.get("val", 0)
 
-        if new_near_cars != self.near_cars:
-            self.near_cars = new_near_cars
-            self._update_targets()
-            self.update()  # redesenha só se mudou
+        # Reset
+        self.left_active = False
+        self.right_active = False
 
-    # ---------------- Ajuste de targets ----------------
-    def _update_targets(self):
-        rect = self.rect()
-        self.target_heights = {"left": 0, "right": 0}
+        # Decodificação dos valores
+        if val in (2, 5):    # Carro à esquerda
+            self.left_active = True
+        elif val in (3, 6):  # Carro à direita
+            self.right_active = True
+        elif val == 4:       # Ambos os lados
+            self.left_active = True
+            self.right_active = True
 
-        for car in self.near_cars:
-            side = car.get("side", "clear")
-            gap_m = abs(car.get("gap_m", 50))
-            intensity = max(0.1, 1.0 - (gap_m / 50.0))
-            bar_height = int(rect.height() * intensity)
-
-            if side in ("left", "both"):
-                self.target_heights["left"] = max(self.target_heights["left"], bar_height)
-            if side in ("right", "both"):
-                self.target_heights["right"] = max(self.target_heights["right"], bar_height)
-
-    # ---------------- Animação suave (delta-time) ----------------
-    def update_animation(self):
-        now = time.time()
-        dt = now - self._last_time
-        self._last_time = now
-
-        changed = False
-        speed = 6.0  # maior = mais rápido
-
-        for side in ("left", "right"):
-            current = self.current_heights[side]
-            target = self.target_heights[side]
-            new_value = current + (target - current) * min(1, dt * speed)
-
-            if abs(new_value - current) > 0.5:  # mudança perceptível
-                self.current_heights[side] = new_value
-                changed = True
-
-        if changed or self.editing_overlay:
-            self.update()  # só redesenha se necessário
-
-    # ---------------- Desenho ----------------
-    def paintEvent(self, event):
-        if not self.near_cars and not self.editing_overlay:
-            return
-
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        rect = self.rect()
-        bar_width = 8
-
-        # Barras reais
-        if not self.editing_overlay:
-            color = QtGui.QColor(self.color)
-            color.setAlpha(self.alpha)
-            painter.setBrush(color)
-            painter.setPen(QtCore.Qt.NoPen)
-
-            if self.current_heights["left"] > 1:
-                left_rect = QtCore.QRect(
-                    0, rect.height() - int(self.current_heights["left"]),
-                    bar_width, int(self.current_heights["left"])
-                )
-                painter.drawRect(left_rect)
-
-            if self.current_heights["right"] > 1:
-                right_rect = QtCore.QRect(
-                    rect.width() - bar_width, rect.height() - int(self.current_heights["right"]),
-                    bar_width, int(self.current_heights["right"])
-                )
-                painter.drawRect(right_rect)
-
-        # Caixa e barras de exemplo no modo edição
-        if self.editing_overlay:
-            overlay_color = QtGui.QColor(255, 255, 255, 40)
-            painter.setBrush(overlay_color)
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 120), 2, QtCore.Qt.DashLine))
-            painter.drawRect(rect)
-
-            painter.setBrush(QtGui.QColor(self.color.red(), self.color.green(), self.color.blue(), self.alpha))
-            left_rect = QtCore.QRect(0, rect.height() - 80, bar_width, 80)
-            right_rect = QtCore.QRect(rect.width() - bar_width, rect.height() - 140, bar_width, 140)
-            painter.drawRect(left_rect)
-            painter.drawRect(right_rect)
-
-        painter.end()
-
-    # ---------------- Modo edição ----------------
-    def set_edit_mode(self, editing: bool):
-        super().set_edit_mode(editing)
-        self.editing_overlay = editing
+        print(f"[CarLRLayer] update_from_iracing: val={val} -> L={self.left_active} R={self.right_active}")
         self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHints(QtGui.QPainter.Antialiasing)
+
+        w, h = self.width(), self.height()
+        size = self.box_size
+        margin = 10
+
+        # Cor base
+        col = QtGui.QColor(self.color)
+
+        # Caixa esquerda
+        col.setAlpha(self.alpha_on if self.left_active else self.alpha_off)
+        painter.setBrush(col)
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRect(margin, h // 2 - size // 2, size, size)
+
+        # Caixa direita
+        col.setAlpha(self.alpha_on if self.right_active else self.alpha_off)
+        painter.setBrush(col)
+        painter.drawRect(w - margin - size, h // 2 - size // 2, size, size)
+
+    def save_config(self):
+        self.cfg_store.save_layer_config(self.layer_id, {
+            "box_size": self.box_size,
+            "alpha_on": self.alpha_on,
+            "alpha_off": self.alpha_off,
+            "color": self.color
+        })
