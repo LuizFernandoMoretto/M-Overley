@@ -27,6 +27,7 @@ class IRacingClient(QtCore.QObject):
         print(">>> DEBUG loop iniciado")
         while self.running:
             if not self.ir.is_initialized:
+                print(">>> DEBUG chamando ir.startup()")
                 self.ir.startup()
 
             if self.ir.is_initialized and self.ir.is_connected:
@@ -57,6 +58,8 @@ class IRacingClient(QtCore.QObject):
             last_laps = self.ir['CarIdxLastLapTime'] or []
             incidents = self.ir['CarIdxIncidentCount'] or []
 
+            print(f">>> DEBUG Encontrados {len(drivers)} drivers")
+
             for idx, drv in enumerate(drivers):
                 name = drv.get('UserName')
                 if not name:
@@ -64,7 +67,7 @@ class IRacingClient(QtCore.QObject):
 
                 pos = positions[idx] if idx < len(positions) else 0
                 if pos <= 0:
-                    continue
+                    pos = idx + 1  # fallback: evita standings vazio
 
                 gap_val = gaps[idx] if idx < len(gaps) else -1
                 gap = f"+{gap_val:.1f}s" if isinstance(gap_val, (int, float)) and gap_val > 0 else "---"
@@ -78,7 +81,6 @@ class IRacingClient(QtCore.QObject):
                     "pos": pos,
                     "driver": name,
                     "irating": drv.get('IRating', 0),
-                    "ir_delta": "±0",  # TODO calcular variação real
                     "last_lap": last,
                     "gap": gap,
                     "incidents": inc_val,

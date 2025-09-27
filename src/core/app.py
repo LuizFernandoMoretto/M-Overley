@@ -10,7 +10,6 @@ from core.iracing_client import IRacingClient
 from layers.twitch_chat_layer import TwitchChatLayer
 
 
-
 LAYER_CLASSES = {
     "standings": StandingsLayer,
     "fuel": FuelLayer,
@@ -40,6 +39,9 @@ class OverlayApp(QtWidgets.QApplication):
         # Gerenciador de layouts
         self.store = LayoutStore(QtWidgets.QWidget())
 
+        # Carregar estados de camadas previamente salvos
+        saved_states = self.store.load_layer_states()
+
         # Cria layers iniciais
         for meta in self.cfg["initial_layers"]:
             cls = LAYER_CLASSES.get(meta["id"])
@@ -52,10 +54,23 @@ class OverlayApp(QtWidgets.QApplication):
                     initial_rect=saved,
                 )
                 self.layers[meta["id"]] = layer
-                layer.setVisible(meta.get("visible", True))
+                # Se já temos estado salvo, respeita ele
+                visible = saved_states.get(meta["id"], meta.get("visible", True))
+                layer.setVisible(visible)
 
         # Painel de controle
         self.panel = ControlPanel(self.cfg["initial_layers"], self)
+
+        # Restaurar geometria do painel (se existir)
+        saved_panel_geo = self.store.load_control_panel_geometry()
+        if saved_panel_geo:
+            self.panel.setGeometry(
+                saved_panel_geo["x"],
+                saved_panel_geo["y"],
+                saved_panel_geo["w"],
+                saved_panel_geo["h"],
+            )
+
         self.panel.show()
 
         # Cliente iRacing (thread + sinal Qt)
@@ -78,6 +93,13 @@ class OverlayApp(QtWidgets.QApplication):
             rect = layer.save_layout()
             self.store.save_layer(layer_id, rect)
 
+        # Salvar também estados dos checkboxes
+        states = {lid: cb.isChecked() for lid, cb in self.panel.checkboxes.items()}
+        self.store.save_layer_states(states)
+
+        # Salvar geometria do painel
+        self.store.save_control_panel_geometry(self.panel.geometry())
+
     def toggle_layer_visibility(self, layer_id: str, visible: bool):
         layer = self.layers.get(layer_id)
         if not layer:
@@ -93,6 +115,9 @@ class OverlayApp(QtWidgets.QApplication):
 
     def closeEvent(self, event):
         print("Encerrando OverlayApp...")
+        # Salva antes de sair
+        self.save_layouts()
+
         if hasattr(self, "iracing_client"):
             self.iracing_client.stop()
         super().closeAllWindows()

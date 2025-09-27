@@ -15,6 +15,16 @@ def load_json(path):
     return {}
 
 
+def save_json(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Erro ao salvar {path}: {e}")
+        return False
+
+
 class LayoutStore:
     def __init__(self, widget=None):
         # Usa a resolução da tela do widget (se existir), senão pega a tela primária
@@ -48,10 +58,36 @@ class LayoutStore:
             self.data[self.key] = {}
 
         self.data[self.key][layer_id] = rect
-
-        try:
-            with open(LAYOUT_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2)
+        if save_json(LAYOUT_FILE, self.data):
             print(f">>> Gravado {layer_id} em {LAYOUT_FILE}")
-        except Exception as e:
-            print(f"Erro ao salvar layout: {e}")
+
+    # --------- Novos métodos ---------
+    def save_layer_states(self, states: dict):
+        """
+        Salva estado (visível / não visível) das camadas.
+        states = { "standings": True, "fuel": False, ... }
+        """
+        if "layers_state" not in self.data:
+            self.data["layers_state"] = {}
+        self.data["layers_state"].update(states)
+        if save_json(LAYOUT_FILE, self.data):
+            print(">>> Estados das camadas salvos")
+
+    def load_layer_states(self):
+        """Carrega estados de camadas salvos anteriormente"""
+        return self.data.get("layers_state", {})
+
+    def save_control_panel_geometry(self, rect):
+        """Salva geometria do painel de controle (opcional)"""
+        self.data["control_panel"] = {
+            "x": rect.x(),
+            "y": rect.y(),
+            "w": rect.width(),
+            "h": rect.height(),
+        }
+        if save_json(LAYOUT_FILE, self.data):
+            print(">>> Geometria do painel salva")
+
+    def load_control_panel_geometry(self):
+        """Carrega geometria do painel de controle, se existir"""
+        return self.data.get("control_panel")

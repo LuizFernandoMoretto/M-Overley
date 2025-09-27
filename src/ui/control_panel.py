@@ -65,10 +65,17 @@ class ControlPanel(QtWidgets.QWidget):
         config_layout.addStretch()
         tabs.addTab(config_tab, "Config")
 
+        # Centraliza painel
+        self.center_on_screen()
+
+        # Restaura estado dos checkboxes
+        self.load_layer_states()
+
     # -------- Funções de controle --------
     def toggle_layer(self, layer_id, checked):
         print(f"[ControlPanel] {layer_id} → {checked}")
         self.app.toggle_layer_visibility(layer_id, checked)
+        self.save_layer_states()  # salva automático sempre que muda
 
     def toggle_lock(self, checked):
         for layer in self.app.layers.values():
@@ -77,12 +84,35 @@ class ControlPanel(QtWidgets.QWidget):
         print(f"[ControlPanel] Layout travado: {checked}")
 
     def toggle_edit_mode(self, checked):
+        """Ativa/desativa modo edição apenas nos layers visíveis"""
         for layer in self.app.layers.values():
-            layer.set_edit_mode(checked)
+            if layer.isVisible():
+                layer.set_edit_mode(checked)
         print(f"[ControlPanel] Modo edição: {checked}")
 
     def save_config(self):
         data = load_config()
         data["twitch_channel"] = self.twitch_input.text().strip()
+        # também salva estados das camadas
+        data["layers"] = {lid: cb.isChecked() for lid, cb in self.checkboxes.items()}
         save_config(data)
-        print("[Config] Canal salvo:", data["twitch_channel"])
+        print("[Config] Canal e camadas salvos")
+
+    def load_layer_states(self):
+        data = load_config()
+        if "layers" in data:
+            for lid, visible in data["layers"].items():
+                if lid in self.checkboxes:
+                    self.checkboxes[lid].setChecked(visible)
+
+    def save_layer_states(self):
+        data = load_config()
+        data["layers"] = {lid: cb.isChecked() for lid, cb in self.checkboxes.items()}
+        save_config(data)
+
+    def center_on_screen(self):
+        screen = self.screen().availableGeometry()
+        size = self.geometry()
+        x = (screen.width() - size.width()) // 2
+        y = (screen.height() - size.height()) // 2
+        self.move(x, y)
