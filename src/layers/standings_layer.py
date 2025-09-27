@@ -16,6 +16,9 @@ class StandingsLayer(BaseLayer):
         self.cfg_store = ConfigStore()
         saved_cfg = self.cfg_store.load_layer_config(layer_id)
 
+        # Transparência configurável
+        self.alpha = saved_cfg.get("alpha", 220)
+
         # Tabela de standings
         headers = ["Pos", "Δ", "#", "Logo", "Driver", "Lic", "iRating", "Últ. Volta", "Gap", "Inc."]
         self.table = QtWidgets.QTableWidget(self)
@@ -29,14 +32,14 @@ class StandingsLayer(BaseLayer):
 
         self.table.setStyleSheet("""
             QTableWidget {
-                background-color: #000000;
+                background-color: transparent;
                 color: white;
                 font-size: 12px;
                 border: 2px solid #444;
                 gridline-color: #555;
             }
             QHeaderView::section {
-                background-color: #111;
+                background-color: rgba(20,20,20,200);
                 color: white;
                 font-weight: bold;
                 border: none;
@@ -129,7 +132,7 @@ class StandingsLayer(BaseLayer):
             # Destaque do líder
             if d.get("pos") == 1:
                 for item in [pos, drv, ir, lap, gap, inc]:
-                    item.setForeground(QtGui.QBrush(QtGui.QColor("#FFD700")))  # dourado discreto
+                    item.setForeground(QtGui.QBrush(QtGui.QColor("#FFD700")))
                     font = item.font()
                     font.setBold(True)
                     item.setFont(font)
@@ -146,22 +149,12 @@ class StandingsLayer(BaseLayer):
             self.table.setItem(i, 8, gap)
             self.table.setItem(i, 9, inc)
 
-            # Multiclass tem prioridade
-            class_color = d.get("class_color")
-            if class_color:
-                for col in range(self.table.columnCount()):
-                    item = self.table.item(i, col)
-                    if item:
-                        brush = QtGui.QBrush(QtGui.QColor(class_color))
-                        brush.setStyle(QtCore.Qt.Dense4Pattern)
-                        item.setBackground(brush)
-            else:
-                # 🎨 Zebra striping
-                bg_color = "#000000" if i % 2 == 0 else "#1a1a1a"
-                for col in range(self.table.columnCount()):
-                    item = self.table.item(i, col)
-                    if item:
-                        item.setBackground(QtGui.QBrush(QtGui.QColor(bg_color)))
+            # 🎨 Zebra striping com transparência configurável
+            bg_color = QtGui.QColor(0, 0, 0, self.alpha) if i % 2 == 0 else QtGui.QColor(30, 30, 30, self.alpha)
+            for col in range(self.table.columnCount()):
+                item = self.table.item(i, col)
+                if item:
+                    item.setBackground(QtGui.QBrush(bg_color))
 
         # Atualiza infos da sessão
         sof = session.get("sof", "--")
@@ -186,6 +179,10 @@ class StandingsLayer(BaseLayer):
             header = self.table.horizontalHeaderItem(col).text()
             widths[header] = self.table.columnWidth(col)
 
-        self.cfg_store.save_layer_config(self.layer_id, {"columns_width": widths})
+        # também salva transparência
+        self.cfg_store.save_layer_config(self.layer_id, {
+            "columns_width": widths,
+            "alpha": self.alpha
+        })
         super().closeEvent(event)
         event.accept()

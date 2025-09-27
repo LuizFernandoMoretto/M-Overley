@@ -128,6 +128,41 @@ class ControlPanel(QtWidgets.QWidget):
                 "color": btn_color.property("chosen_color").name()
             }))
             layout.addWidget(btn_save)
+        
+        elif layer_id == "standings":
+            # Transparência
+            slider_alpha = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            slider_alpha.setRange(50, 255)
+            slider_alpha.setValue(cfg.get("alpha", 220))
+            layout.addWidget(QtWidgets.QLabel("Transparência"))
+            layout.addWidget(slider_alpha)
+
+            # Botão salvar
+            btn_save = QtWidgets.QPushButton("Salvar")
+            btn_save.clicked.connect(lambda: self._save_and_close(dialog, layer_id, {
+                "alpha": slider_alpha.value()
+            }))
+            layout.addWidget(btn_save)
+
+        elif layer_id == "fuel":
+            # Transparência
+            slider_alpha = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            slider_alpha.setRange(50, 255)
+            slider_alpha.setValue(cfg.get("alpha", 220))
+            layout.addWidget(QtWidgets.QLabel("Transparência"))
+            layout.addWidget(slider_alpha)
+
+            # Zebra striping
+            zebra_cb = QtWidgets.QCheckBox("Ativar zebra striping (linhas alternadas)")
+            zebra_cb.setChecked(cfg.get("zebra", True))
+            layout.addWidget(zebra_cb)
+
+            btn_save = QtWidgets.QPushButton("Salvar")
+            btn_save.clicked.connect(lambda: self._save_and_close(dialog, layer_id, {
+                "alpha": slider_alpha.value(),
+                "zebra": zebra_cb.isChecked()
+            }))
+            layout.addWidget(btn_save)
 
         else:
             layout.addWidget(QtWidgets.QLabel("Sem opções específicas para este layer ainda."))
