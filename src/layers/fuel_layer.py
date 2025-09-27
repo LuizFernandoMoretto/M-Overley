@@ -7,7 +7,7 @@ class FuelLayer(BaseLayer):
     fuel_updated = QtCore.Signal(dict)  # sinal dedicado para fuel
 
     def __init__(self, app, layer_id="fuel", title="Fuel Calc", initial_rect=None):
-        super().__init__(layer_id, title, app, initial_rect)
+        super().__init__(app, layer_id, title, initial_rect)
 
         # tabela
         self.table = QtWidgets.QTableWidget(self)

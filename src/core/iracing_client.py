@@ -54,11 +54,18 @@ class IRacingClient(QtCore.QObject):
 
             drivers = drivers_info['Drivers'] or []
             positions = self.ir['CarIdxPosition'] or []
+            qual_pos = self.ir['CarIdxQualPosition'] or []
             gaps = self.ir['CarIdxF2Time'] or []
             last_laps = self.ir['CarIdxLastLapTime'] or []
             incidents = self.ir['CarIdxIncidentCount'] or []
 
             print(f">>> DEBUG Encontrados {len(drivers)} drivers")
+
+            # líder da corrida
+            leader_idx = None
+            if positions and 1 in positions:
+                leader_idx = positions.index(1)
+            leader_time = gaps[leader_idx] if leader_idx is not None and leader_idx < len(gaps) else 0.0
 
             for idx, drv in enumerate(drivers):
                 name = drv.get('UserName')
@@ -67,25 +74,58 @@ class IRacingClient(QtCore.QObject):
 
                 pos = positions[idx] if idx < len(positions) else 0
                 if pos <= 0:
-                    pos = idx + 1  # fallback: evita standings vazio
+                    continue  # piloto fora do grid
 
+                grid = qual_pos[idx] if idx < len(qual_pos) else pos
+                pos_gain = grid - pos if grid and pos > 0 else 0
+
+                # gap p/ líder
                 gap_val = gaps[idx] if idx < len(gaps) else -1
-                gap = f"+{gap_val:.1f}s" if isinstance(gap_val, (int, float)) and gap_val > 0 else "---"
+                gap = "---"
+                if isinstance(gap_val, (int, float)):
+                    if leader_idx is not None and leader_time > 0:
+                        delta = gap_val - leader_time
+                        gap = f"+{delta:.1f}s" if delta > 0.05 else "Líder"
 
+                # última volta
                 last_val = last_laps[idx] if idx < len(last_laps) else -1
                 last = f"{last_val:.3f}" if isinstance(last_val, (int, float)) and last_val > 0 else "--"
 
+                # incidentes
                 inc_val = incidents[idx] if idx < len(incidents) else 0
+
+                # licença
+                lic_str = drv.get("LicString", "--")
+                lic_color = f"#{drv.get('LicColor', '333333')}"
+
+                # classe
+                class_id = drv.get("CarClassID")
+                class_color = f"#{drv.get('CarClassColor', '222222')}"
+
+                # carro
+                car_num = drv.get("CarNumberRaw", "--")
+                car_logo = None
+                if "CarPath" in drv:
+                    car_logo = f"assets/cars/{drv['CarPath']}.png"
 
                 data.append({
                     "pos": pos,
+                    "pos_gain": pos_gain,
                     "driver": name,
+                    "car_number": car_num,
+                    "car_logo": car_logo,
+                    "license": lic_str,
+                    "license_color": lic_color,
+                    "class_id": class_id,
+                    "class_color": class_color,
                     "irating": drv.get('IRating', 0),
+                    "ir_delta": "",  # estimativa futura
                     "last_lap": last,
                     "gap": gap,
                     "incidents": inc_val,
                 })
 
+            # ordena pela posição
             data.sort(key=lambda d: d["pos"])
         except Exception as e:
             print("[IRacingClient] Erro standings:", e)
@@ -100,13 +140,29 @@ class IRacingClient(QtCore.QObject):
             session_info = self.ir['SessionInfo'] or {}
             weekend_info = self.ir['WeekendInfo'] or {}
 
-            sof = 0
+            sof_general = 0
+            class_sof = {}
+
             laps = 0
             if session_info and 'Sessions' in session_info:
                 sessions = session_info['Sessions']
                 if sessions and isinstance(sessions, list):
-                    sof = sessions[0].get('StrengthOfField', 0)
-                    laps = sessions[0].get('ResultsLapsComplete', 0)
+                    first_session = sessions[0]
+
+                    # SOF geral
+                    sof_general = first_session.get('StrengthOfField', 0)
+
+                    # Voltas
+                    laps = first_session.get('ResultsLapsComplete', 0)
+
+                    # SOF por classe (se disponível em ResultsPositions)
+                    results = first_session.get('ResultsPositions', [])
+                    if results and isinstance(results, list):
+                        for pos in results:
+                            class_id = pos.get("CarClassID")
+                            sof_val = pos.get("StrengthOfField")
+                            if class_id and sof_val:
+                                class_sof[class_id] = sof_val
 
             time_remain = self.ir['SessionTimeRemain'] or 0
 
@@ -122,7 +178,8 @@ class IRacingClient(QtCore.QObject):
                     track_temp = raw_temp
 
             return {
-                "sof": sof,
+                "sof": sof_general,
+                "class_sof": class_sof,  # <- novidade
                 "time": f"{time_remain/60:.1f} min" if isinstance(time_remain, (int, float)) else "--",
                 "laps": laps,
                 "track_temp": f"{track_temp:.1f} °C" if isinstance(track_temp, (int, float)) else "--",

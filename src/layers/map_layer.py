@@ -4,7 +4,7 @@ import math
 
 class MapLayer(BaseLayer):
     def __init__(self, app, layer_id='map', title='Track Map', initial_rect=None):
-        super().__init__(layer_id, title, app, initial_rect)
+        super().__init__(app, layer_id, title, initial_rect)
 
         self.cars = [{"angle": i*36} for i in range(10)]
         self.timer = QtCore.QTimer(self)

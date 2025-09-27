@@ -2,11 +2,11 @@ from PySide6 import QtCore, QtWidgets
 
 
 class BaseLayer(QtWidgets.QWidget):
-    def __init__(self, layer_id, title, app, initial_rect=None):
+    def __init__(self, app, layer_id, title, initial_rect=None):
         super().__init__()
+        self.app = app
         self.layer_id = layer_id
         self.title = title
-        self.app = app
         self._editing = False
         self._locked = False
 

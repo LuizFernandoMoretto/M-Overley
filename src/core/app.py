@@ -78,6 +78,78 @@ class OverlayApp(QtWidgets.QApplication):
         self.iracing_client.data_ready.connect(self._dispatch_iracing_data)
         self.iracing_client.start()
 
+        # 🎨 Aplica tema moderno
+        dark_stylesheet = """
+        QWidget {
+            background-color: #000000;
+            color: #f5f5f5;
+            font-family: 'Segoe UI';
+            font-size: 11pt;
+        }
+
+        QPushButton {
+            background-color: #3a3a4f;
+            border: 1px solid #5a5a7f;
+            border-radius: 6px;
+            padding: 6px 12px;
+        }
+        QPushButton:hover {
+            background-color: #50506a;
+        }
+        QPushButton:pressed {
+            background-color: #2d2d3d;
+        }
+
+        QCheckBox {
+            spacing: 8px;
+        }
+        QCheckBox::indicator {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            border: 1px solid #aaa;
+            background: #2d2d3d;
+        }
+        QCheckBox::indicator:checked {
+            background-color: #4CAF50;
+            border: 1px solid #4CAF50;
+        }
+
+        QLabel {
+            font-weight: bold;
+            margin-top: 6px;
+            margin-bottom: 2px;
+            color: #cfcfe0;
+        }
+
+        QGroupBox {
+            border: 1px solid #5a5a7f;
+            border-radius: 8px;
+            margin-top: 10px;
+            padding: 6px;
+            color: #f5f5f5;
+            font-weight: bold;
+        }
+
+        QTabWidget::pane {
+            border: 1px solid #5a5a7f;
+            background: #2d2d3d;
+            border-radius: 6px;
+        }
+        QTabBar::tab {
+            background: #2d2d3d;
+            color: #f5f5f5;
+            padding: 6px 12px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+        }
+        QTabBar::tab:selected {
+            background: #3a3a4f;
+            font-weight: bold;
+        }
+        """
+        self.setStyleSheet(dark_stylesheet)
+
     def _dispatch_iracing_data(self, packet):
         """Distribui dados do iRacing para todos os layers"""
         for layer in self.layers.values():
@@ -120,5 +192,7 @@ class OverlayApp(QtWidgets.QApplication):
 
         if hasattr(self, "iracing_client"):
             self.iracing_client.stop()
+            self.iracing_client.wait()  # garante encerrar a thread sem crash
+
         super().closeAllWindows()
         event.accept()

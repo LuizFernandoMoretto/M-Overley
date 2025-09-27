@@ -26,7 +26,7 @@ def save_config(data):
 
 class TwitchChatLayer(BaseLayer):
     def __init__(self, app, layer_id="twitchchat", title="Twitch Chat", initial_rect=None):
-        super().__init__(layer_id, title, app, initial_rect)
+        super().__init__(app, layer_id, title, initial_rect)
 
         self.view = QtWebEngineWidgets.QWebEngineView(self)
 
