@@ -25,11 +25,17 @@ class StandingsLayer(BaseLayer):
         self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(headers)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setStretchLastSection(True)
+
+        # Configuração do header
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(False)  # ❌ não estica última coluna
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)  # 🔒 modo fixo
+
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.table.setIconSize(QtCore.QSize(24, 12))
 
+        # Estilos
         self.table.setStyleSheet("""
             QTableWidget {
                 background-color: transparent;
@@ -47,12 +53,25 @@ class StandingsLayer(BaseLayer):
             }
         """)
 
-        # Restaurar larguras salvas
+        # Larguras padrão
+        default_widths = {
+            "Pos": 40,
+            "Δ": 40,
+            "#": 40,
+            "Logo": 50,
+            "Driver": 150,
+            "Lic": 60,
+            "iRating": 80,
+            "Últ. Volta": 90,
+            "Gap": 80,
+            "Inc.": 50,
+        }
+
         saved_widths = saved_cfg.get("columns_width", {})
         for col in range(self.table.columnCount()):
-            header = self.table.horizontalHeaderItem(col).text()
-            if header in saved_widths:
-                self.table.setColumnWidth(col, saved_widths[header])
+            header_text = self.table.horizontalHeaderItem(col).text()
+            width = saved_widths.get(header_text, default_widths.get(header_text, 80))
+            self.table.setColumnWidth(col, width)
 
         # Label inferior com infos da sessão
         self.session_label = QtWidgets.QLabel("Sessão: --", self)
@@ -78,6 +97,16 @@ class StandingsLayer(BaseLayer):
             self.app.iracing_client.add_listener(self.update_from_iracing)
 
         self.show()
+
+    def set_edit_mode(self, editing: bool):
+        """Alterna entre edição e fixo"""
+        header = self.table.horizontalHeader()
+        if editing:
+            header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)  # ✋ usuário pode arrastar
+        else:
+            header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)  # 🔒 volta a travar
+
+        super().set_edit_mode(editing)
 
     def update_from_iracing(self, packet):
         if not isinstance(packet, dict):

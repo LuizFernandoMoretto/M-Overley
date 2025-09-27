@@ -46,7 +46,7 @@ class IRacingClient(QtCore.QObject):
                     "standings": self._get_standings(),
                     "session": self._get_session_info(),
                     "fuel": self._get_fuel(),
-                    "CarLeftRight": self.ir['CarLeftRight'] if 'CarLeftRight' in self.ir else 0
+                    "car_lr": self._get_car_lr()
                 }
                 # envia o pacote com segurança para a thread Qt
                 self.data_ready.emit(packet)
@@ -220,3 +220,27 @@ class IRacingClient(QtCore.QObject):
         except Exception as e:
             print("[IRacingClient] Erro fuel:", e)
             return {}
+        
+    # -------------------
+    # Car Left/Right
+    # -------------------
+    def _get_car_lr(self):
+        """Retorna carros próximos para o layer CarLR"""
+        try:
+            val = self.ir['CarLeftRight']
+            if val is None:
+                return {"cars": []}
+
+            cars = []
+            # 0 = clear, 1 = left, 2 = right, 3 = both
+            if val == 1:
+                cars.append({"side": "left", "gap_m": 10})
+            elif val == 2:
+                cars.append({"side": "right", "gap_m": 10})
+            elif val == 3:
+                cars.append({"side": "both", "gap_m": 10})
+
+            return {"cars": cars}
+        except Exception as e:
+            print("[IRacingClient] Erro car_lr:", e)
+            return {"cars": []}
